@@ -1,0 +1,15 @@
+# Vague intensifiers: they claim degree without a number.
+extends: existence
+message: "Vague intensifier: '%s'. Delete it or give the number."
+level: warning
+ignorecase: true
+tokens:
+  - incredibly
+  - extremely
+  - tremendously
+  - immensely
+  - hugely
+  - insanely
+  - massively
+  - profoundly
+  - unbelievably

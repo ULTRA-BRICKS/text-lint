@@ -1,0 +1,16 @@
+# «Данный» → «этот». Only the forms that cannot be the noun «данные» (data).
+extends: substitution
+message: "Замените «%[2]s» на %[1]s."
+level: suggestion
+ignorecase: true
+swap:
+  данный: этот
+  данная: эта
+  данное: это
+  данного: этого
+  данной: этой
+  данному: этому
+  данную: эту
+  данном: этом
+action:
+  name: replace

@@ -1,0 +1,8 @@
+# «Важно понимать / помнить / отметить» without «, что» (aiw-ru only catches the «, что» form,
+# and misses «важно помнить, что» entirely).
+extends: existence
+message: "Вводная обёртка: «%s». Уберите её и скажите, что именно нужно учесть."
+level: warning
+ignorecase: true
+raw:
+  - '\bважно\s+(?:(?:понимать|отметить|подчеркнуть|учитывать)\b(?!\s*,\s*что\b)|помнить\b)'

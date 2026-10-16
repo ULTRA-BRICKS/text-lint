@@ -1,0 +1,9 @@
+# "All tests pass" with no count, link or log after it in the same sentence. Evidence means a
+# digit, "(", "[", ":" or a code span (Vale shows inline code as "*" characters) before the
+# sentence ends: "All tests pass (`pytest -q`: 42 passed)" is fine.
+extends: existence
+message: "Unproven claim: '%s'. Give the count and link the run, e.g. '42 passed: <CI link>'."
+level: warning
+ignorecase: true
+raw:
+  - '\b(?:all\s+(?:the\s+)?tests\s+(?:pass(?:ed|es)?|are\s+(?:passing|green))|все\s+тесты\s+(?:проходят|прошли|пройдены|зел[её]ные|успешно\s+проходят))\b(?![^.\n]*[\d(\[:*`])'

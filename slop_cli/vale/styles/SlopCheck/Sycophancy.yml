@@ -1,0 +1,38 @@
+# Flattery aimed at the reader. Replaces ai-tells.SycophancyMarkers (see vale.ini): keeps its
+# phrases, adds catch/find/point praise, drops bare "Absolutely", "Certainly", "Of course".
+extends: existence
+message: "Flattery: '%s'. Delete it and start with the content."
+level: error
+ignorecase: true
+tokens:
+  - Great question
+  - Excellent question
+  - That's a great question
+  - That's an excellent question
+  - What a great question
+  - Fantastic question
+  - Wonderful question
+  - I'm glad you asked
+  - I'm happy to help
+  - I'd be happy to help
+  - I'd be glad to help
+  - You're absolutely right
+  - You are absolutely right
+  - You're totally right
+  - You make an excellent point
+  - That's a wonderful idea
+  - That's a fantastic point
+  - I couldn't agree more
+  - Great catch
+  - Good catch
+  - Nice catch
+  - Excellent catch
+  - Nice find
+  - Good find
+  - Great find
+  - Great point
+  - Excellent point
+  - Great observation
+  - Sharp eye
+  - You've hit on something important
+  - You're right to point that out

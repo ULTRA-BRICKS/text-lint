@@ -1,0 +1,20 @@
+# One sample per line: <SlopCheck rule><TAB><text the rule must flag>. Every
+# slop_cli/vale/styles/SlopCheck/*.yml needs at least one line here.
+Sycophancy	Great catch, the cache key was wrong.
+Sycophancy	Good catch on the timeout.
+StatusReport	Successfully implemented the retry loop.
+DoneEmoji	✅ Done!
+OfferMore	Would you like me to add a test for that as well?
+UnprovenTestClaim	All tests pass.
+Intensifiers	The new index is incredibly fast.
+Hedging	This is arguably the cleaner design.
+Utilize	We utilize the cache for lookups.
+RuStoitOtmetit	Стоит отметить один момент про кэш.
+RuVazhnoPonimat	Важно понимать ограничения очереди.
+RuVazhnoPonimat	Важно помнить, что кэш общий.
+RuSycophancy	Отличный улов, ключ кэша был неверный.
+RuStatusReport	Успешно реализовано кэширование.
+RuOfferMore	Если нужно — могу добавить тест.
+RuListIntro	Ниже приведён список изменений.
+RuDannyi	Данная функция возвращает список.
+RuVCelyah	В целях проверки запускаем сборку.

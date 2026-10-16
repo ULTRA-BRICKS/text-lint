@@ -39,6 +39,7 @@ case "$(uname -s)" in
       uv tool install --force "git+${EXPECT_URL%.git}"
     fi
     command -v vale >/dev/null 2>&1 || echo "  NOTE: install Vale too: winget install errata-ai.Vale"
+    "$TOOL" install-skill || echo "  WARNING: '$TOOL install-skill' failed — re-run it once $TOOL is on PATH."
     echo "  $TOOL is installed (uv tool)."
     exit 0
     ;;
@@ -161,6 +162,13 @@ if [[ -z "$RESOLVED" ]]; then
   echo "  WARNING: $TOOL is installed at $TOOL_BIN, but $BIN is not on PATH." >&2
   echo "  Fix it:  export PATH=\"$BIN:\$PATH\"" >&2
   exit 1
+fi
+
+# ── advertise to agents ───────────────────────────────────────────────────────
+# The blurb is also rig's "installed" marker: without it every `rig apply` reruns this script.
+if ! "$TOOL_BIN" install-skill; then
+  echo "  WARNING: '$TOOL install-skill' failed — $TOOL is installed but agents may not"
+  echo "           auto-discover it. Re-run '$TOOL install-skill' manually to fix."
 fi
 
 echo ""

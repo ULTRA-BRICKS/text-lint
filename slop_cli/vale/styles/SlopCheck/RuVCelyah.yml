@@ -1,0 +1,9 @@
+# «В целях» → «чтобы» / «для».
+extends: substitution
+message: "Замените «%[2]s» на %[1]s."
+level: suggestion
+ignorecase: true
+swap:
+  в целях: чтобы|для
+action:
+  name: replace

@@ -1,0 +1,9 @@
+# "✅ Done!" / «Готово! ✅»: a check-mark announcing completion. The emoji sits outside word
+# boundaries, so this is a raw, nonword pattern.
+extends: existence
+message: "Status-report filler: '%s'. Say what changed and link the evidence instead of a check mark."
+level: warning
+ignorecase: true
+nonword: true
+raw:
+  - '(?:✅\s*(?:done|готово)\b[!.]*|\b(?:done|готово)\s*[!.]*\s*✅)'

@@ -1,0 +1,16 @@
+# The one safe swap from ai-tells.FormalRegister (disabled in vale.ini).
+extends: substitution
+message: "Use '%s' instead of '%s'."
+level: warning
+ignorecase: true
+swap:
+  utilize: use
+  utilizes: uses
+  utilized: used
+  utilizing: using
+  utilise: use
+  utilises: uses
+  utilised: used
+  utilising: using
+action:
+  name: replace

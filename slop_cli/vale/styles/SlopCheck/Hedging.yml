@@ -1,0 +1,14 @@
+# Hedges ai-tells.HedgingPhrases does not list.
+extends: existence
+message: "Hedge: '%s'. State the claim, or say what is uncertain and why."
+level: warning
+ignorecase: true
+tokens:
+  - arguably
+  - it appears that
+  - it seems like
+  - to a certain extent
+  - in a sense
+  - one could argue
+  - it could be argued
+  - it may be worth

@@ -1,0 +1,8 @@
+# Bare «стоит отметить» / «следует подчеркнуть» / «стоит упомянуть». aiw-ru catches the forms
+# followed by «, что» (rule стоит-отметить), so those are left to it.
+extends: existence
+message: "Вводная обёртка: «%s». Уберите её и сразу назовите факт."
+level: warning
+ignorecase: true
+raw:
+  - '\b(?:стоит|следует|необходимо)\s+(?:отметить|подчеркнуть|упомянуть)\b(?!\s*,\s*что\b)'

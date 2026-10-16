@@ -5,4 +5,4 @@ The CLI lives in slop_cli.cli; the console entry point is slop_cli.cli:main
 symlink install path.
 """
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"

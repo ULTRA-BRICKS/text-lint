@@ -1,0 +1,13 @@
+# Agent status-report phrasing: success announced instead of shown.
+extends: existence
+message: "Status-report filler: '%s'. Say what changed and link the evidence (commit, CI run, output)."
+level: warning
+ignorecase: true
+tokens:
+  - 'successfully (?:implemented|completed|added|fixed|created|updated|deployed|merged|resolved|refactored|integrated|configured|installed|migrated)'
+  - "I(?:'ve| have) successfully"
+  - 'everything (?:is working|works) (?:perfectly|flawlessly|as expected)'
+  - 'works (?:perfectly|flawlessly|like a charm)'
+  - 'all done!'
+  - 'task complete(?:d)?!'
+  - "here(?:'s| is) what I (?:did|changed)"

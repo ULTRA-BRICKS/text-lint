@@ -1,0 +1,14 @@
+# Closing offers of more help (ai-tells.ClosingPleasantries covers "Let me know if you need
+# anything else" and "Feel free to ask").
+extends: existence
+message: "Closing offer: '%s'. End on the content; ask a concrete question only if you need an answer."
+level: error
+ignorecase: true
+tokens:
+  - Would you like me to
+  - "If you'd like, I can"
+  - 'If you want, I can'
+  - 'Want me to'
+  - 'Shall I'
+  - 'Happy to help further'
+  - 'Just say the word'
