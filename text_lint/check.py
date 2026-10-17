@@ -136,10 +136,10 @@ def _words(text, paras):
 
 def _score(findings, masked, en_paras, ru_paras, aiwru_score):
     """0-100. English: weighted findings per 100 words. Russian: aiw-ru's own score, or the
-    density of our SlopCheck findings when that is higher. Mixed: word-weighted average."""
+    density of our TextLint findings when that is higher. Mixed: word-weighted average."""
     en_words, ru_words = _words(masked, en_paras), _words(masked, ru_paras)
     en = _density_score([f for f in findings if not _in(ru_paras, f.span[0])], en_words)
-    ours_in_ru = [f for f in findings if f.rule_id.startswith("SlopCheck.") and _in(ru_paras, f.span[0])]
+    ours_in_ru = [f for f in findings if f.rule_id.startswith("TextLint.") and _in(ru_paras, f.span[0])]
     ru = max(aiwru_score, _density_score(ours_in_ru, ru_words))
     total = en_words + ru_words
     return round((en * en_words + ru * ru_words) / total) if total else 0

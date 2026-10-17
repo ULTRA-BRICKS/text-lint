@@ -11,11 +11,11 @@ import re
 import sys
 
 PATTERNS = [
-    ("SlopCheck.Sycophancy", "error", r"Great question"),
+    ("TextLint.Sycophancy", "error", r"Great (?:question|catch)"),
     ("ai-tells.OverusedVocabulary", "error", r"\brobust\b"),
     ("ai-tells.EmDashUsage", "error", r"—"),
-    ("SlopCheck.RuStoitOtmetit", "warning", r"Стоит отметить"),
-    ("SlopCheck.Utilize", "warning", r"\butilize\b"),
+    ("TextLint.RuStoitOtmetit", "warning", r"Стоит отметить"),
+    ("TextLint.Utilize", "warning", r"\butilize\b"),
 ]
 
 args = sys.argv[1:]
@@ -38,7 +38,7 @@ for lineno, line in enumerate(sys.stdin.read().split("\n"), 1):
         for m in re.finditer(pattern, line):
             action = {"Name": "", "Params": None}
             suggestions = []
-            if check == "SlopCheck.Utilize":
+            if check == "TextLint.Utilize":
                 action = {"Name": "replace", "Params": ["use"]}
                 suggestions = ["use"]
             alerts.append({

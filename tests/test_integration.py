@@ -1,4 +1,4 @@
-"""Real engines: vendored ai-tells + SlopCheck through a real `vale`, and a real `aiw-ru`.
+"""Real engines: vendored ai-tells + TextLint through a real `vale`, and a real `aiw-ru`.
 
 Skipped when an engine is not installed; CI sets SLOP_CHECK_REQUIRE_ENGINES=1 and installs
 both, so there a missing engine fails the run instead of skipping it.
@@ -9,16 +9,19 @@ import json
 import os
 import shutil
 import sys
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
 
-from slop_cli.cli import main
-from slop_cli.engines import find_aiwru, find_vale
+from text_lint.cli import main
+from text_lint.engines import find_aiwru, find_vale
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
-SLOPCHECK = ROOT / "slop_cli" / "vale" / "styles" / "SlopCheck"
+TEXTLINT_STYLE = ROOT / "text_lint" / "packs" / "vale" / "styles" / "TextLint"
+# Package data, so an installed copy ships its rule samples too.
+SAMPLES = files("text_lint") / "packs" / "vale" / "samples.tsv"
 
 _missing = [name for name, path in (("vale", find_vale()), ("aiw-ru", find_aiwru())) if path is None]
 if _missing and os.environ.get("SLOP_CHECK_REQUIRE_ENGINES") == "1":
@@ -39,7 +42,7 @@ def isolated_state(monkeypatch, tmp_path):
 def check(capsys, *argv, text=None, monkeypatch=None):
     if text is not None:
         monkeypatch.setattr("sys.stdin", io.StringIO(text))
-    code = main(["--format", "json", *argv])
+    code = main(["check", "--format", "json", *argv])
     return code, json.loads(capsys.readouterr().out)
 
 
@@ -52,12 +55,12 @@ def test_english_slop_fixture(capsys):
     assert code == 1
     found = rules(data)
     for rule in (
-        "SlopCheck.Sycophancy",          # Great question
+        "TextLint.Sycophancy",           # Great question
         "ai-tells.HedgingPhrases",       # It's important to note that
         "ai-tells.OverusedVocabulary",   # robust
         "ai-tells.EmDashUsage",          # —
-        "SlopCheck.StatusReport",        # Successfully implemented
-        "SlopCheck.UnprovenTestClaim",   # All tests pass
+        "TextLint.StatusReport",         # Successfully implemented
+        "TextLint.UnprovenTestClaim",    # All tests pass
         "ai-tells.ClosingPleasantries",  # I hope this helps / Let me know if you need anything else
     ):
         assert rule in found, rule
@@ -72,7 +75,7 @@ def test_russian_slop_fixture(capsys):
     assert "aiwru.filler.стоит-отметить" in found
     assert "aiwru.tier1.в-современном-мире" in found
     assert "aiwru.chatbot.надеюсь-поможет" in found
-    assert "SlopCheck.RuVazhnoPonimat" in found  # «важно понимать, как»: aiw-ru misses it
+    assert "TextLint.RuVazhnoPonimat" in found  # «важно понимать, как»: aiw-ru misses it
     assert not [r for r in found if r.startswith("ai-tells.")]
     # No phrase is reported twice by the two engines.
     spans = [tuple(f["span"]) for f in data["findings"]]
@@ -93,11 +96,11 @@ def test_code_and_urls_are_ignored(capsys):
 
 
 def test_list_item_that_starts_with_inline_code_is_still_checked(capsys, monkeypatch):
-    # Blanking `styles/SlopCheck/` to spaces would make this item an indented code block
+    # Blanking `styles/TextLint/` to spaces would make this item an indented code block
     # that Vale skips; the engines get the real Markdown instead.
-    text = '- `styles/SlopCheck/`: our pack covers praise like "Great catch" too.\n'
+    text = '- `styles/TextLint/`: our pack covers praise like "Great catch" too.\n'
     _, data = check(capsys, text=text, monkeypatch=monkeypatch)
-    assert "SlopCheck.Sycophancy" in rules(data)
+    assert "TextLint.Sycophancy" in rules(data)
 
 
 def test_findings_never_touch_code_or_urls(capsys, monkeypatch):
@@ -129,7 +132,7 @@ def test_aiwru_described_issues_are_findings(capsys, monkeypatch, text, rule):
 ])
 def test_prose_after_an_unclosed_container_fence_is_checked(capsys, monkeypatch, text):
     _, data = check(capsys, text=text, monkeypatch=monkeypatch)
-    assert "SlopCheck.Sycophancy" in rules(data)
+    assert "TextLint.Sycophancy" in rules(data)
 
 
 def test_invisible_char_in_code_does_not_hide_one_in_prose(capsys, monkeypatch):
@@ -161,7 +164,7 @@ def test_rendered_match_is_not_moved_into_later_code(capsys, monkeypatch, text):
     # Vale matches the rendered "Great question"; the same words in code later on the line
     # must not capture the finding (it would then be dropped as protected).
     _, data = check(capsys, text=text, monkeypatch=monkeypatch)
-    assert "SlopCheck.Sycophancy" in rules(data)
+    assert "TextLint.Sycophancy" in rules(data)
 
 
 def test_english_tells_inside_a_russian_paragraph_are_kept(capsys, monkeypatch):
@@ -178,24 +181,24 @@ def test_em_dash_rule_skips_cyrillic_lines(capsys, monkeypatch):
 
 def _samples():
     rows = []
-    for line in (FIXTURES / "rule_samples.tsv").read_text(encoding="utf-8").splitlines():
+    for line in SAMPLES.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#"):
             rule, text = line.split("\t", 1)
             rows.append((rule, text))
     return rows
 
 
-def test_every_slopcheck_rule_has_a_sample():
+def test_every_textlint_rule_has_a_sample():
     covered = {rule for rule, _ in _samples()}
-    rule_files = {p.stem for p in SLOPCHECK.glob("*.yml")}
-    assert rule_files, f"no SlopCheck rules under {SLOPCHECK}"
+    rule_files = {p.stem for p in TEXTLINT_STYLE.glob("*.yml")}
+    assert rule_files, f"no TextLint rules under {TEXTLINT_STYLE}"
     assert rule_files <= covered
 
 
 @pytest.mark.parametrize("rule, text", _samples())
-def test_slopcheck_rule_flags_its_sample(capsys, monkeypatch, rule, text):
+def test_textlint_rule_flags_its_sample(capsys, monkeypatch, rule, text):
     _, data = check(capsys, text=text + "\n", monkeypatch=monkeypatch)
-    assert f"SlopCheck.{rule}" in rules(data)
+    assert f"TextLint.{rule}" in rules(data)
 
 
 def test_pr_context_adds_commit_rules(capsys, monkeypatch):

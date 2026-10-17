@@ -1,24 +1,24 @@
-# slop-cli agent instructions
+# text-lint agent instructions
 
 See `README.md` for what the tool does, how to install it and the test command; this file
 carries the rules every session in this repo follows.
 
 ## Workflow
 
-- Ticket first: `task new` (task-cli; backend Forgejo `ultrabricks/slop-cli`, see `rig.yaml`).
+- Ticket first: `task new` (task-cli; backend Forgejo `ultrabricks/text-lint`, see `rig.yaml`).
 - Worktree only: `rig worktree create <name>`; the primary checkout stays on `main`.
 - TDD red-first: write the failing test, watch it fail for the right reason, then fix.
-- Atomic conventional commits; bump `slop_cli.__version__` in a behavior-changing PR.
+- Atomic conventional commits; bump `text_lint.__version__` in a behavior-changing PR.
 - PR → review gate (`review`, under `flock /tmp/disk-session-review.lock`) → green `tests`
   CI → merge with `gh ship <PR>`.
-- Prose you write here (README, ADRs, PR bodies) goes through `slop-check` first.
+- Prose you write here (README, ADRs, PR bodies) goes through `text-lint check` first.
 
 ## Rule packs are data
 
-Rules live in `slop_cli/vale/styles/`. `ai-tells` and `ai-tells-commits` are vendored from
-tbhb/vale-ai-tells v1.37.0: do not edit them, tune them in `slop_cli/vale/vale.ini` (each
-disabled rule carries its reason there). Our own rules go into `SlopCheck/*.yml`, one rule
-per file, each with a fixture line in `tests/fixtures/` that it must flag.
+Rules live in `text_lint/packs/vale/styles/`. `ai-tells` and `ai-tells-commits` are vendored
+from tbhb/vale-ai-tells v1.37.0: do not edit them, tune them in `text_lint/packs/vale/vale.ini`
+(each disabled rule carries its reason there). Our own rules go into `TextLint/*.yml`, one rule
+per file, each with a sample line in `text_lint/packs/vale/samples.tsv` that it must flag.
 
 ## Heavy work runs on Runpod
 

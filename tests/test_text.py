@@ -1,4 +1,4 @@
-from slop_cli.text import LineIndex, is_russian, mask, paragraphs, protected_spans
+from text_lint.text import LineIndex, is_russian, mask, paragraphs, protected_spans
 
 
 def _covered(text, spans, needle):

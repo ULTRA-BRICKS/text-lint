@@ -1,4 +1,5 @@
-"""slop-check command line: read text, run the check, print findings, exit 0/1/2."""
+"""text-lint command line: `check` reads text, runs the check, prints findings and exits
+0/1/2; `install-skill` writes the agent blurb."""
 
 import argparse
 import json
@@ -8,40 +9,43 @@ import sys
 from . import __version__
 from .check import check, exit_code
 from .engines import CONTEXTS, EngineError
+from .install import TOOL, install_skill
 
-EPILOG = """\
+DESCRIPTION = ("Flag AI tells (stock phrases, flattery, hedging, agent status reports) "
+               "in English and Russian prose.")
+
+CHECK_EPILOG = """\
 exit codes:
   0  no findings (an advisory Laya score never counts)
   1  findings
   2  usage error, unreadable input, or a needed engine missing or failed
 
-`slop-check install-skill` writes the agent blurb ~/.agents/skills/.blurbs/slop-check.md.
-
-engines: vale (English + SlopCheck rules; brew install vale) and aiw-ru (Russian;
-installed with slop-check, or uv tool install aiw-ru). SLOP_CHECK_VALE / SLOP_CHECK_AIWRU
+engines: vale (English + TextLint rules; brew install vale) and aiw-ru (Russian;
+installed with text-lint, or uv tool install aiw-ru). SLOP_CHECK_VALE / SLOP_CHECK_AIWRU
 override their paths.
 """
 
 
 def _parser():
-    p = argparse.ArgumentParser(
-        prog="slop-check",
-        description="Flag AI tells (stock phrases, flattery, hedging, agent status reports) "
-                    "in English and Russian prose.",
-        epilog=EPILOG,
+    p = argparse.ArgumentParser(prog="text-lint", description=DESCRIPTION)
+    p.add_argument("--version", action="version", version=f"text-lint {__version__}")
+    commands = p.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    c = commands.add_parser(
+        "check", help="check a file or stdin", description=DESCRIPTION, epilog=CHECK_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("path", nargs="?", default="-", help="file to check; '-' or nothing reads stdin")
-    p.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
-    p.add_argument("--lang", choices=("auto", "en", "ru"), default="auto",
+    c.add_argument("path", nargs="?", default="-", help="file to check; '-' or nothing reads stdin")
+    c.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    c.add_argument("--lang", choices=("auto", "en", "ru"), default="auto",
                    help="auto routes each paragraph by its share of Cyrillic letters (default: auto)")
-    p.add_argument("--context", choices=[c for c in CONTEXTS if c],
+    c.add_argument("--context", choices=[name for name in CONTEXTS if name],
                    help="where the text goes: issue, pr (adds commit-message rules), tg (Telegram), docs")
-    p.add_argument("--laya", action="store_true",
+    c.add_argument("--laya", action="store_true",
                    help="ask the already-running task-cli Laya server for an advisory score")
-    p.add_argument("--ignore", action="append", default=[], metavar="RULE_ID",
+    c.add_argument("--ignore", action="append", default=[], metavar="RULE_ID",
                    help="drop a rule, e.g. ai-tells.EmDashUsage, or a whole style (ai-tells); repeatable")
-    p.add_argument("--version", action="version", version=f"slop-check {__version__}")
+    blurb = f"the agent blurb ~/.agents/skills/.blurbs/{TOOL}.md"
+    commands.add_parser("install-skill", help=f"write {blurb}", description=f"Write {blurb}.")
     return p
 
 
@@ -93,28 +97,23 @@ def _format_text(report, label):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    if argv[:1] == ["install-skill"]:
-        # A subcommand next to the optional input path: check a file named so as ./install-skill.
-        argparse.ArgumentParser(prog="slop-check install-skill",
-                                description="Write the agent blurb ~/.agents/skills/.blurbs/slop-check.md.",
-                                ).parse_args(argv[1:])
-        from .install import install_skill
+    args = _parser().parse_args(argv)
+    if args.command == "install-skill":
         try:
             return install_skill()
         except OSError as exc:
-            print(_safe(f"slop-check: install-skill failed: {exc}"), file=sys.stderr)
+            print(_safe(f"text-lint: install-skill failed: {exc}"), file=sys.stderr)
             return 2
-    args = _parser().parse_args(argv)
     label = "<stdin>" if args.path == "-" else args.path
     try:
         text = _read(args.path)
     except (OSError, UnicodeDecodeError) as exc:
-        print(_safe(f"slop-check: cannot read {label}: {exc}"), file=sys.stderr)
+        print(_safe(f"text-lint: cannot read {label}: {exc}"), file=sys.stderr)
         return 2
     try:
         report = check(text, lang=args.lang, context=args.context, ignore=args.ignore, use_laya=args.laya)
     except EngineError as exc:
-        print(_safe(f"slop-check: {exc}"), file=sys.stderr)
+        print(_safe(f"text-lint: {exc}"), file=sys.stderr)
         return 2
     if args.format == "json":
         print(json.dumps(report, ensure_ascii=False, indent=2))

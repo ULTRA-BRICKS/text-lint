@@ -1,7 +1,7 @@
-"""The two engines slop-check wraps, run as subprocesses and mapped to one Finding shape.
+"""The two engines text-lint wraps, run as subprocesses and mapped to one Finding shape.
 
-Vale (English, plus our SlopCheck pack for both languages) runs with the vendored config in
-slop_cli/vale; aiw-ru (Russian) runs `aiw-ru scan --json`. Both read the text on stdin.
+Vale (English, plus our TextLint pack for both languages) runs with the vendored config in
+text_lint/packs/vale; aiw-ru (Russian) runs `aiw-ru scan --json`. Both read the text on stdin.
 """
 
 import json
@@ -12,9 +12,9 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-VALE_CONFIG = Path(__file__).resolve().parent / "vale" / "vale.ini"
+VALE_CONFIG = Path(__file__).resolve().parent / "packs" / "vale" / "vale.ini"
 VALE_INSTALL = "brew install vale  (or a release binary: https://vale.sh/docs/install)"
-AIWRU_INSTALL = "uv tool install aiw-ru  (or reinstall slop-check, which depends on it)"
+AIWRU_INSTALL = "uv tool install aiw-ru  (or reinstall text-lint, which depends on it)"
 ENGINE_TIMEOUT_S = 120
 
 # --context -> (Vale extension, aiw-ru --context). The extensions are mapped to Markdown in

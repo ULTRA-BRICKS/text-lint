@@ -11,19 +11,16 @@ from pathlib import Path
 
 import pytest
 
-from slop_cli import laya
-from slop_cli.cli import main
-
-FAKES = Path(__file__).resolve().parent / "fakes"
+from text_lint import laya
+from text_lint.cli import main
 
 
 @pytest.fixture
-def state_home(monkeypatch):
-    # AF_UNIX paths are capped at ~108 bytes, so not pytest's long tmp_path.
+def state_home(fake_engines, monkeypatch):
+    # AF_UNIX paths are capped at ~108 bytes, so not pytest's long tmp_path that
+    # fake_engines (tests/conftest.py) points XDG_STATE_HOME at.
     home = tempfile.mkdtemp(prefix="slt")
     monkeypatch.setenv("XDG_STATE_HOME", home)
-    monkeypatch.setenv("SLOP_CHECK_VALE", str(FAKES / "vale"))
-    monkeypatch.setenv("SLOP_CHECK_AIWRU", str(FAKES / "aiw-ru"))
     yield Path(home)
     shutil.rmtree(home, ignore_errors=True)
 
@@ -36,7 +33,7 @@ class FakeLaya:
         self.noul = noul
         self.raw_reply = raw_reply  # bytes sent instead of a well-formed answer
         self.hang = threading.Event() if hang else None  # read the request, never answer
-        # Every level private, whatever the umask: slop-check refuses a socket that another
+        # Every level private, whatever the umask: text-lint refuses a socket that another
         # user could have planted or swapped in.
         for directory in (path.parent.parent, path.parent):
             directory.mkdir(mode=0o700, exist_ok=True)
@@ -73,7 +70,7 @@ class FakeLaya:
 
 def run(argv, capsys, monkeypatch, stdin):
     monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
-    code = main(argv)
+    code = main(["check", *argv])
     return code, capsys.readouterr().out
 
 

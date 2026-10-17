@@ -19,5 +19,5 @@ task:
   backend: forgejo
   forgejo:
     url: https://git.hyperide.ai
-    repo: ultrabricks/slop-cli
+    repo: ultrabricks/text-lint
     attachment_mode: native

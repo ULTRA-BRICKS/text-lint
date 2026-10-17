@@ -2,17 +2,17 @@
 
 - Status: accepted
 - Date: 2026-10-16
-- Ticket: [ultrabricks/slop-cli#1](https://git.hyperide.ai/ultrabricks/slop-cli/issues/1)
+- Ticket: [ultrabricks/text-lint#1](https://git.hyperide.ai/ultrabricks/text-lint/issues/1)
+  (filed when the repo was called slop-cli)
 
 ## Context
 
 The owner asked several times for a local checker for prose, in English and Russian, that
 flags the phrasing that makes issues, PR bodies and Telegram reports read machine-written.
 Nothing like it existed in our repos: agent-tools has Oxlint rules for code, and tg-cli's
-dictionary gate only bans words the owner listed in `~/.claude/DICT.json` (that file is
-missing on the Linux workstation, so the gate is off there). The owner asked us to adopt or
-wrap ready open-source tools, add our own English and Russian rules where they fall short,
-and record the comparison here.
+dictionary gate only bans words the owner listed in `~/.claude/DICT.json`. The owner asked us
+to adopt or wrap ready open-source tools, add our own English and Russian rules where they
+fall short, and record the comparison here.
 
 Requirements:
 
@@ -52,13 +52,14 @@ What disqualified the rest:
 
 ## Decision
 
-`slop-check` is a thin Python wrapper around two engines with one merged output:
+`slop-check` (renamed text-lint in 0.2.0, with its `SlopCheck` style renamed `TextLint`) is a
+thin Python wrapper around two engines with one merged output:
 
-- **English: Vale with vale-ai-tells v1.37.0**, vendored into `slop_cli/vale/styles/` so an
+- **English: Vale with vale-ai-tells v1.37.0**, vendored into `text_lint/packs/vale/styles/` so an
   install works offline and never runs `vale sync`. `ai-tells-commits` is added for PR bodies.
 - **Russian: aiw-ru**, a Python dependency of the package, called as
   `aiw-ru scan --json --context …` on the Russian paragraphs only.
-- **Our own `SlopCheck` Vale style**: YAML files for both languages that cover the gaps the
+- **Our own `TextLint` Vale style**: YAML files for both languages that cover the gaps the
   survey found (below). Vale's `\b` treats Cyrillic letters as word characters (checked with
   a real Vale 3.24.0 run), so Russian rules use ordinary `\b`.
 - The wrapper owns everything the engines disagree on: paragraph routing by Cyrillic share,
@@ -66,7 +67,7 @@ What disqualified the rest:
   and a 0-100 score (aiw-ru's for Russian, findings per 100 words for English, which Vale has
   no score for).
 
-Gaps filled by `SlopCheck` (examples in code spans, so this ADR passes its own check):
+Gaps filled by `TextLint` (examples in code spans, so this ADR passes its own check):
 
 - bare `стоит отметить` and `важно понимать / помнить`: aiw-ru only matches them before `, что`;
 - English praise ai-tells lacks: `Great catch`, `Good catch`, `Nice find`;
@@ -86,12 +87,12 @@ rule is dropped on Cyrillic lines, because the em dash is normal Russian punctua
 ## Consequences
 
 - Two runtimes: Vale is a Go binary installed separately (`brew install vale`, or rig's
-  `brew: [vale]`); aiw-ru needs Python ≥ 3.12, so slop-check does too.
+  `brew: [vale]`); aiw-ru needs Python ≥ 3.12, so text-lint does too.
 - Upgrading vale-ai-tells means replacing the vendored directory and re-running the trial; a
   new upstream rule is on by default until someone disables it with a reason.
-- The two engines can report the same phrase. Russian SlopCheck rules use a lookahead to leave
+- The two engines can report the same phrase. Russian TextLint rules use a lookahead to leave
   the «, что» forms to aiw-ru, and the integration test fails on a duplicated span.
-- aiw-ru's lexicon is code, not data; Russian phrases it misses go into `SlopCheck`, not into
+- aiw-ru's lexicon is code, not data; Russian phrases it misses go into `TextLint`, not into
   a fork of aiw-ru.
 - English and Russian scores come from different methods, so a mixed text's score is a rough
   summary. The exit code depends on findings only.

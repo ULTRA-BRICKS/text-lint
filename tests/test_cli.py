@@ -9,30 +9,26 @@ from pathlib import Path
 
 import pytest
 
-from slop_cli import __version__
-from slop_cli.cli import main
+from text_lint import __version__
+from text_lint.cli import main
 
-FAKES = Path(__file__).resolve().parent / "fakes"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
-
-@pytest.fixture(autouse=True)
-def fake_engines(monkeypatch, tmp_path):
-    monkeypatch.setenv("SLOP_CHECK_VALE", str(FAKES / "vale"))
-    monkeypatch.setenv("SLOP_CHECK_AIWRU", str(FAKES / "aiw-ru"))
-    monkeypatch.setenv("FAKE_VALE_LOG", str(tmp_path / "vale.log"))
-    monkeypatch.setenv("FAKE_AIWRU_LOG", str(tmp_path / "aiwru.log"))
-    # No real Laya socket can be reached from a test.
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    return tmp_path
+# tests/conftest.py: fake vale and aiw-ru for every test here.
+pytestmark = pytest.mark.usefixtures("fake_engines")
 
 
-def run(argv, capsys, stdin=None, monkeypatch=None):
+def invoke(argv, capsys, stdin=None, monkeypatch=None):
     if stdin is not None:
         monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
     code = main(argv)
     out, err = capsys.readouterr()
     return code, out, err
+
+
+def run(argv, capsys, stdin=None, monkeypatch=None):
+    """`text-lint check` with ``argv``."""
+    return invoke(["check", *argv], capsys, stdin, monkeypatch)
 
 
 def run_json(argv, capsys, stdin=None, monkeypatch=None):
@@ -61,7 +57,7 @@ def test_findings_exit_1_with_full_finding_shape(capsys, monkeypatch):
     assert data["score"] > 0
     first = data["findings"][0]
     assert set(first) == {"rule_id", "engine", "severity", "line", "col", "span", "match", "message", "suggestion"}
-    assert first["rule_id"] == "SlopCheck.Sycophancy"
+    assert first["rule_id"] == "TextLint.Sycophancy"
     assert first["engine"] == "vale"
     assert (first["line"], first["col"]) == (2, 6)
     start, end = first["span"]
@@ -85,8 +81,8 @@ def test_text_output_lines_and_score(capsys, monkeypatch):
     code, out, _ = run([], capsys, "We utilize Great question.\n", monkeypatch)
     lines = out.splitlines()
     assert code == 1
-    assert lines[0].startswith("<stdin>:1:4 SlopCheck.Utilize fake SlopCheck.Utilize: 'utilize' → use")
-    assert lines[1].startswith("<stdin>:1:12 SlopCheck.Sycophancy ")
+    assert lines[0].startswith("<stdin>:1:4 TextLint.Utilize fake TextLint.Utilize: 'utilize' → use")
+    assert lines[1].startswith("<stdin>:1:12 TextLint.Sycophancy ")
     assert lines[-1].startswith("score: ")
 
 
@@ -170,7 +166,7 @@ def test_context_maps_to_vale_extension_and_aiwru_context(capsys, monkeypatch, f
 
 def test_ignore_drops_rules_by_id_or_prefix(capsys, monkeypatch):
     text = "Great question, robust.\n"
-    code, data, _ = run_json(["--ignore", "SlopCheck.Sycophancy", "--ignore", "ai-tells"], capsys, text, monkeypatch)
+    code, data, _ = run_json(["--ignore", "TextLint.Sycophancy", "--ignore", "ai-tells"], capsys, text, monkeypatch)
     assert data["findings"] == []
     assert code == 0
 
@@ -220,9 +216,10 @@ def test_malformed_engine_output_exits_2(capsys, monkeypatch, engine, output):
 
 
 def test_usage_errors_exit_2(capsys, tmp_path):
-    with pytest.raises(SystemExit) as exc:
-        main(["--format", "xml"])
-    assert exc.value.code == 2
+    for argv in (["check", "--format", "xml"], [], ["lint"]):
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 2
     code, _, err = run([str(tmp_path / "missing.md")], capsys)
     assert code == 2 and "missing.md" in err
 
@@ -231,11 +228,18 @@ def test_version_flag(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert capsys.readouterr().out.strip() == f"slop-check {__version__}"
+    assert capsys.readouterr().out.strip() == f"text-lint {__version__}"
+
+
+def test_check_reads_a_file_named_like_a_subcommand(capsys, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "install-skill").write_text("We utilize caches.\n", encoding="utf-8")
+    code, out, _ = run(["install-skill"], capsys)
+    assert code == 1 and out.startswith("install-skill:1:4 TextLint.Utilize ")
 
 
 def test_russian_score_is_aiwru_score_unless_our_rules_find_more(capsys, monkeypatch):
-    # The fake aiw-ru scores 60 when it finds anything; no SlopCheck rule fires here.
+    # The fake aiw-ru scores 60 when it finds anything; no TextLint rule fires here.
     _, data, _ = run_json([], capsys, "В современном мире всё иначе.\n", monkeypatch)
     assert data["score"] == 60
 
@@ -247,7 +251,7 @@ def test_mixed_score_is_word_weighted(capsys, monkeypatch):
 
 
 def test_text_output_escapes_control_characters():
-    from slop_cli.cli import _format_text
+    from text_lint.cli import _format_text
 
     report = {"score": 1, "engines": {"laya": {"status": "off"}}, "findings": [{
         "line": 1, "col": 1, "rule_id": "r", "message": "m '\x1b]52;c;aGk=\x07'\nnext",
@@ -261,11 +265,11 @@ def test_text_output_escapes_control_characters():
 def test_cli_imports_without_posix_only_modules():
     # Windows has no grp/pwd; --laya must not be what breaks every other command there.
     code = ("import sys; sys.modules['grp'] = None; sys.modules['pwd'] = None; "
-            "from slop_cli.cli import main; main(['--version'])")
+            "from text_lint.cli import main; main(['--version'])")
     root = Path(__file__).resolve().parent.parent
     out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
-    assert out.stdout.startswith("slop-check ")
+    assert out.stdout.startswith("text-lint ")
 
 
 def test_whole_line_url_does_not_split_a_paragraph(capsys, monkeypatch, fake_engines):
@@ -301,7 +305,7 @@ def test_dropped_aiwru_findings_stop_scoring(capsys, monkeypatch):
 
 
 def test_bundled_aiwru_exe_is_found_on_windows(monkeypatch, tmp_path):
-    from slop_cli import engines
+    from text_lint import engines
 
     exe = tmp_path / "aiw-ru.exe"
     exe.write_text("")
@@ -326,11 +330,23 @@ def _set_home(monkeypatch, path):
 def test_install_skill_writes_the_blurb_once(capsys, monkeypatch, tmp_path):
     _set_home(monkeypatch, tmp_path)
     assert main(["install-skill"]) == 0
-    blurb = tmp_path / ".agents" / "skills" / ".blurbs" / "slop-check.md"
+    # rig reads .blurbs/<tools.items name>.md as the "installed" marker.
+    blurb = tmp_path / ".agents" / "skills" / ".blurbs" / "text-lint.md"
     text = blurb.read_text(encoding="utf-8")
-    assert text.startswith("- `slop-check`") and text.count("\n") == 1
+    assert text.startswith("- `text-lint`") and text.count("\n") == 1
     assert main(["install-skill"]) == 0
     assert "already current" in capsys.readouterr().out
+
+
+def test_install_skill_removes_the_0_1_blurb(capsys, monkeypatch, tmp_path):
+    # slop-check 0.1 wrote .blurbs/slop-check.md; keeping it would advertise the tool twice.
+    _set_home(monkeypatch, tmp_path)
+    blurbs = tmp_path / ".agents" / "skills" / ".blurbs"
+    blurbs.mkdir(parents=True)
+    (blurbs / "slop-check.md").write_text("- `slop-check` old\n", encoding="utf-8")
+    (blurbs / "tg.md").write_text("- `tg`\n", encoding="utf-8")
+    assert main(["install-skill"]) == 0
+    assert sorted(p.name for p in blurbs.iterdir()) == ["text-lint.md", "tg.md"]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX directory permissions")
@@ -342,12 +358,12 @@ def test_install_skill_validates_arguments_and_reports_failures(capsys, monkeypa
             main(argv)
     assert not blurbs.exists()
     blurbs.mkdir(parents=True)
-    (blurbs / "slop-check.md").write_bytes(b"\xff\xfe")
+    (blurbs / "text-lint.md").write_bytes(b"\xff\xfe")
     assert main(["install-skill"]) == 0
-    (blurbs / "slop-check.md").unlink()
+    (blurbs / "text-lint.md").unlink()
     blurbs.chmod(0o500)
     try:
-        code, _, err = run(["install-skill"], capsys)
+        code, _, err = invoke(["install-skill"], capsys)
     finally:
         blurbs.chmod(0o700)
     assert code == 2 and "install-skill failed" in err
@@ -361,7 +377,7 @@ def test_failed_install_skill_write_leaves_no_marker(capsys, monkeypatch, tmp_pa
         raise OSError(28, "No space left on device")
 
     monkeypatch.setattr(Path, "write_bytes", full_disk)
-    code, _, _ = run(["install-skill"], capsys)
+    code, _, _ = invoke(["install-skill"], capsys)
     blurbs = tmp_path / ".agents" / "skills" / ".blurbs"
     assert code == 2 and list(blurbs.iterdir()) == []
 
@@ -370,7 +386,7 @@ def test_failed_install_skill_write_leaves_no_marker(capsys, monkeypatch, tmp_pa
 def test_install_skill_output_escapes_control_characters_in_home(capsys, monkeypatch, tmp_path):
     home = tmp_path / "h\x1b]52;c;aGk=\x07"
     _set_home(monkeypatch, home)
-    code, out, _ = run(["install-skill"], capsys)
+    code, out, _ = invoke(["install-skill"], capsys)
     assert code == 0 and "\x1b" not in out and "\x07" not in out
 
 

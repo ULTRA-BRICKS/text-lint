@@ -1,5 +1,5 @@
-# One sample per line: <SlopCheck rule><TAB><text the rule must flag>. Every
-# slop_cli/vale/styles/SlopCheck/*.yml needs at least one line here.
+# One sample per line: <TextLint rule><TAB><text the rule must flag>. Every
+# text_lint/packs/vale/styles/TextLint/*.yml needs at least one line here.
 Sycophancy	Great catch, the cache key was wrong.
 Sycophancy	Good catch on the timeout.
 StatusReport	Successfully implemented the retry loop.
