@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "fine",
+      "pattern": "ok",
+      "flags": "iu",
+      "replacement": "x",
+      "why": ""
+    },
+    {
+      "id": "broken-rule",
+      "pattern": "(unclosed",
+      "flags": "iu",
+      "replacement": "x",
+      "why": ""
+    }
+  ]
+}

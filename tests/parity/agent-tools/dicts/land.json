@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "land-landing-in-russian",
+      "pattern": "\\bland(?:ing|ed|s)?\\b",
+      "flags": "iu",
+      "only_if_cyrillic": true,
+      "replacement": "применяется / применён / влит",
+      "why": "English 'land/landing' must not appear in Russian text."
+    }
+  ]
+}

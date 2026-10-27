@@ -18,8 +18,8 @@ OLD_TOOL = "slop-check"
 BLURB = (
     "- `text-lint`: flag AI tells (stock phrases, flattery, hedging, agent status reports) "
     "in English and Russian prose before it is posted: `text-lint check file.md`, "
-    "`echo text | text-lint check`, `--context issue|pr|tg|docs`, `--format json`, "
-    "`--ignore RULE_ID`, `--laya` (advisory). Exit 0 clean, 1 findings, 2 error. "
+    "`echo text | text-lint check`, `--profile prose|issue|pr|commit|...`, `--format json`, "
+    "`--ignore RULE_ID`. Exit 0 pass/warn, 1 block, 2 error. "
     "Run it on PR/issue bodies and reports before posting (`slop-check` is its deprecated "
     "old name).\n"
 )

@@ -1,0 +1,11 @@
+# tg-cli's mixed-script guard: one word that switches between Cyrillic and another alphabet
+# at least twice, the homoglyph or mojibake signature (native/script.py).
+id: Script.MixedScript
+kind: mixed-script
+severity: error
+profiles: [prose, issue, pr, commit, tg-bot, as-user, chat, spoken, ui-strings]
+message: "Word '{match}' mixes Cyrillic with Latin or other letters (homoglyphs or mojibake); retype it."
+params: {}
+examples:
+  flag: ["задача починeна", "hello mіr"]
+  pass: ["я заpushил всё", "PR-ревью прошло, IDшник обновлён"]

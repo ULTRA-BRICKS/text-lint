@@ -16,8 +16,8 @@ _BASH = shutil.which("bash")
 
 def _origin_functions():
     text = INSTALL_SH.read_text(encoding="utf-8")
-    repo = re.search(r'^REPO="([^"]+)"$', text, re.M)
-    block = re.search(r"^_url_host_path\(\) \{.*?^_origin_is_canonical\(\) \{.*?^\}$", text, re.M | re.S)
+    repo = re.search(r'^REPO="([^"]+)"$', text, re.MULTILINE)
+    block = re.search(r"^_url_host_path\(\) \{.*?^_origin_is_canonical\(\) \{.*?^\}$", text, re.MULTILINE | re.DOTALL)
     assert repo and block, "install.sh: REPO= or the _url_host_path.._origin_is_canonical block moved"
     return repo.group(1), block.group(0)
 

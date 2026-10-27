@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "g",
+      "pattern": "скамейк[а-яё]*",
+      "flags": "giu",
+      "replacement": "бенч",
+      "why": ""
+    }
+  ]
+}

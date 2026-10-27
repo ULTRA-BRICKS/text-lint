@@ -1,0 +1,13 @@
+# Strings extracted from code and locale files: TextLint only (the .ui style set).
+name: ui-strings
+fail_on: warning
+markup: plain
+packs: [dict, script]
+engines:
+  native: {enabled: true}
+  vale: {enabled: true, options: {ext: .ui}}
+  aiw-ru: {enabled: true, options: {context: chat}}
+  laya:
+    enabled: true
+    optional: false  # required: no flag or env var turns Laya off
+    options: {questions: [slop], max_chars: 2000, timeout_ms: 1500, start_wait_ms: 60000}

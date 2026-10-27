@@ -26,7 +26,7 @@ What this spec assumes on top of the request (the owner can correct any of these
 - Existing repos must keep working: enforcement checks only the lines a change touches, and it
   starts in a warn-only phase.
 - Everything runs offline on the workstation and in CI, with no network call. Laya is mandatory
-  and local: the profiles that use it (4.5) ask the task-cli classify server on this machine, which
+  and local: every profile (4.5) asks the task-cli classify server on this machine, which
   holds one copy of the model in RAM (about 2 GB), and nothing goes to the network (owner, tg#22710).
 
 Success means: one implementation of each check, every consumer calling it, every repo running it
@@ -51,7 +51,7 @@ None of the gates spawns a process, and none calls slop-check or Vale today.
 | Stray CJK | `features/cli/cjk-guard.ts`: `findStrayCjk`:98 | `tg`:1527-1533 | generic | `--no-feature cjk-guard` | `tests/cjk-guard*.test.ts` | **text-lint** |
 | Mixed-script garbage word | `features/cli/mixed-script-guard.ts`: `findMixedScriptTokens`:142 | `tg`:1537-1541 | generic | shares `cjk-guard` | `tests/mixed-script-guard*.test.ts` | **text-lint** |
 | Escalation format (`--tag decision`) | `features/cli/escalation-format.ts`: `validateEscalationFormat`:299 | `features/cli/args.ts` `TAG_GATES`:297, dispatched :656-672; `tg`:1324 `enforceEscalationGate` (defined :144-157); table recheck `tg`:1653-1656 | generic | `ESCALATION_GATE_ENFORCE=0` downgrades to a warning | `tests/escalation-format.test.ts`, `tests/escalation-gate-args.test.ts` | **text-lint** |
-| Intent (decision / problem / report, #706) | `features/cli/intent-gate.ts`: `classifyIntent`:342, `validateProblemFormat`:266, `validateReportFormat`:298 | `tg`:1708-1729, only for agent-authored sends | classifier generic; the obligations store (`features/cli/obligations.ts`) is Telegram | `ESCALATION_GATE_ENFORCE=0`, `--automated` | `tests/intent-gate*.test.ts` | classifier and validators to **text-lint**; obligations stay |
+| Intent (decision / problem / report, #706) | `features/cli/intent-gate.ts`: `classifyIntent`:342, `validateProblemFormat`:266, `validateReportFormat`:298 | `tg`:1708-1729, for agent-authored or `--automated` sends | classifier generic; the obligations store (`features/cli/obligations.ts`) is Telegram | `ESCALATION_GATE_ENFORCE=0`; `--automated` (a program's message) runs the intent gate but skips the problem/report formats (`check = ok`, :449): Laya is not asked (:335), the message never settles a follow-up (:391, :474), and a prose question in it still blocks | `tests/intent-gate*.test.ts` | classifier and validators to **text-lint**; obligations stay |
 | Laya call | `features/cli/laya-socket.ts`: `layaAskProbability`:86 (1200 ms timeout, 2000 chars) | inside the intent gate | generic client | the `TG_LAYA` off switch (removed by this design, 4.3) | `tests/laya-socket.test.ts` | **text-lint** (one client instead of two) |
 | Long unstructured message (advisory) | `features/cli/message-structure.ts`: `shouldWarnLongUnstructuredPlainMessage`:169 | `tg`:1505 | generic | advisory only | `tests/message-structure.test.ts` | **text-lint** |
 | Screenshot mention | `features/cli/screenshot-guard.ts`: `mentionsScreenshot`:23 | `tg`:1559-1578, skipped when a photo is attached | depends on the attachments | `--no-feature screenshot-guard` | `tests/screenshot-guard*.test.ts` | stays in tg-cli |
@@ -238,7 +238,7 @@ text-lint check [PATH|-] [--profile NAME] [--input-json] [--format text|json]
                 [--lang auto|en|ru] [--enforce warn|block|repo] [--fail-on error|warning|suggestion]
                 [--ignore RULE_ID]... [--dict PATH] [--laya-mode required|ci] [--cleanup editor|none]
 text-lint diff (--staged | --worktree | --base REF [--head REF]) [--format text|json]
-               [--enforce warn|block|repo]
+               [--enforce warn|block|repo] [--laya-mode required|ci]
 text-lint extract PATH... [--format text|json]     # show the UI strings a file yields
 text-lint rules [--profile NAME] [--format text|json]
 text-lint selftest [--rules GLOB]
@@ -259,17 +259,25 @@ text-lint --version
 - `--dict` overrides the dictionary path; otherwise `TEXT_LINT_DICT`, then `TG_DICT_PATH` (kept
   for tg-cli's existing users), then `~/.claude/DICT.json`. An explicit path that does not exist is
   a configuration error; a missing default file means no `Dict.*` rules.
-- Laya: the profile decides which questions text-lint asks the local Laya server (4.5); there is
-  no switch that turns Laya off. When a profile uses Laya and the socket refuses or is absent,
-  text-lint runs `task classify-server start` once (5.5), waits for it, and sends the request
-  again; when Laya still cannot answer, the run exits 2 naming Laya, never a silent skip. Budget:
-  1.5 s per warm request, at most 20 s waiting for a cold start (4.7).
-- `--laya-mode ci` is for CI runners, which have no Laya model: the run asks Laya nothing and the
-  report (and the CI job summary) says `laya: not run (ci runner)`. It is accepted only when the
-  environment has `CI=true`; anywhere else it is a usage error (exit 2). The default is
+- Laya: every profile asks the local Laya server the questions it lists (4.5), in one request per
+  run (all units joined with blank lines, cut at `max_chars`); there is no switch that turns Laya
+  off. Among the `laya-*.sock` sockets task-cli left, text-lint uses the one with the highest
+  version that accepts a connection. When none does, text-lint runs `task classify-server start`
+  once (5.5), waits for it, and sends the request to the socket path the command prints; when
+  Laya still cannot answer, the run exits 2 naming Laya, never a silent skip. The one exception
+  is an automated message (`meta.automated`, section 12 ruling B): the report says
+  `laya: unreachable` and the other engines decide the verdict. Budget: 1.5 s per warm request,
+  at most 60 s waiting for a cold start (4.7).
+- `--laya-mode ci` is for CI runners, which have no Laya model. It tries the socket first; if
+  one answers, Laya runs normally. Only when `CI=true` and no socket answers is Laya skipped,
+  with `engines.laya = {"status": "not run", "reason": "ci runner, no local model"}` and the
+  report line `laya: not run (ci runner, no local model)`; this mode never starts a server.
+  Without `CI=true`, `--laya-mode ci` is a usage error (exit 2). The default is
   `--laya-mode required`.
 - `TEXT_LINT_LAYA_SOCKET` and `TEXT_LINT_LAYA_TIMEOUT_MS` choose a non-default socket and timeout
-  (tests use them); tg-cli maps its `TG_LAYA_SOCKET` and `TG_LAYA_TIMEOUT_MS` to them.
+  (tests use them); tg-cli maps its `TG_LAYA_SOCKET` and `TG_LAYA_TIMEOUT_MS` to them. A socket
+  named in `TEXT_LINT_LAYA_SOCKET` is never started: when it does not answer, Laya is
+  unreachable.
 
 Exit codes, the same for every subcommand:
 
@@ -343,7 +351,12 @@ within the source file for `diff` runs, mapped back through any normalization do
 field of tg-cli's `IntentVerdict` (`features/cli/intent-gate.ts`:56-61) that the obligations store
 reads: `action` (`pass`, `follow-up` or `block`), `kinds`, `reason`, `follow_ups` (one
 `{kind, quote}` per owed item, as `FollowUp` at :47), `valid` (`decision`, `problem` or `null`:
-what a reply settles) and `hints`; a `block` also produces an `Intent.*` finding. A
+what a reply settles) and `hints`, plus `laya_p` (Laya's `asks_reader` probability when it was
+asked); a `block` also produces an `Intent.*` finding (`Intent.MalformedDecision`,
+`Intent.MalformedProblem`, `Intent.MalformedReport`, `Intent.Mixed`), except that a malformed
+message of its own tag is reported once, by `Format.<Tag>`, as tg-cli prints that checklist once
+(`tg`:1720). An engine's `status` is `ok`, `skipped`, `unreachable` (Laya, automated message
+only) or `not run` (Laya, `--laya-mode ci`). A
 breaking change to either document becomes `@2`, and the release that introduces it still accepts
 `--schema 1` for one minor release.
 
@@ -354,33 +367,36 @@ markup, `fail_on`, and per-engine options. v1 ships these:
 
 | Profile | Used for | Engines | `fail_on` |
 |---|---|---|---|
-| `prose` | Markdown docs, READMEs, ADRs, skills | native (dict, script) + Vale `ai-tells`, `TextLint` + aiw-ru `docs` | warning |
+| `prose` | Markdown docs, READMEs, ADRs, skills | native (dict, script) + Vale `ai-tells`, `TextLint` + aiw-ru `docs` + Laya required (slop) | warning |
 | `issue` | ticket titles and bodies | as `prose`, aiw-ru `technical`, + Laya required (slop) | warning |
 | `pr` | PR title and body | as `prose` plus `ai-tells-commits`, + Laya required (slop; `--laya-mode ci` on CI runners, 8.3) | warning |
-| `commit` | commit messages; `--cleanup editor` (what the commit-msg hook passes) drops `#` comment lines and everything below git's scissors line, as git's default cleanup does; without it (CI reading a stored message) the message is checked as committed; trailers are always kept, since `ai-tells-commits.CommitAttribution` reads them | native + Vale `ai-tells-commits`, `TextLint` + aiw-ru `technical` | warning |
+| `commit` | commit messages; `--cleanup editor` (what the commit-msg hook passes) drops `#` comment lines and everything below git's scissors line, as git's default cleanup does; without it (CI reading a stored message) the message is checked as committed; trailers are always kept, since `ai-tells-commits.CommitAttribution` reads them | native + Vale `ai-tells-commits`, `TextLint` + aiw-ru `technical` + Laya required (slop) | warning |
 | `tg-bot` | messages the bot sends (every plain `tg` send) | native (dict, script, formats, intent, structure) + Vale `.tg` + aiw-ru `telegram` + Laya required (`asks_reader` for intent, slop); emoji allowed: every rule whose only target is emoji, `TextLint.DoneEmoji` included, is off | error |
 | `as-user` | text sent as the owner (`tg user send`, `tg call --say`) | native (dict, script, `AsUser.*`) + Vale `.tg` + aiw-ru `chat` + Laya required (slop, `first_person`); emoji and bot formatting are errors | error |
-| `chat` | agent replies (Stop hook) | native (dict, script) only | error |
+| `chat` | agent replies (Stop hook) | native (dict, script) + Laya required (slop) | error |
 | `spoken` | text spoken as the owner in duplex calls | the `as-user` rules plus `Spoken.Markup` | error |
-| `ui-strings` | strings extracted from code and locale files | native (dict, script) + Vale `TextLint` + aiw-ru `chat` | warning |
+| `ui-strings` | strings extracted from code and locale files | native (dict, script) + Vale `TextLint` + aiw-ru `chat` + Laya required (slop) | warning |
 
 In `tg-bot`, `as-user` and `spoken`, a missing Vale or aiw-ru is reported as skipped, not exit 2,
 and their findings are capped at `warning` during the warn phase, so they show but do not block a
 send. After the warn phase (section 9, rollout step 6) the cap is lifted and `fail_on` of `tg-bot`
 and `as-user` drops from `error` to `warning` in the same change; lifting the cap alone would leave
 a Vale `warning` such as `TextLint.Utilize` below `fail_on: error`, so it would still not block.
-Laya is different: these
-profiles require it, and an unreachable Laya is exit 2. aiw-ru always runs with `--no-model`, so an
-installed aiw-ru model is never loaded.
+Laya is different: every profile requires it, and an unreachable Laya is exit 2 (an automated
+message is reported as `laya: unreachable` instead, 4.3). aiw-ru always runs with `--no-model`,
+so an installed aiw-ru model is never loaded.
 
 The consumer picks `tg-bot`, `as-user` or `spoken` from the send path in code (5.1, 5.2); no CLI
-flag or option lets a person choose the profile of a send. `commit`, `ui-strings`, `prose`, `chat`
-and `diff` runs ask Laya nothing: a hook run checks many small strings within a 3 s budget, and a
-model call per run does not fit it.
+flag or option lets a person choose the profile of a send. Each `check` run, and each profile
+group of a `diff` run, sends Laya one request whatever the number of units: a warm request takes
+about 0.2 s, which fits the hooks' 3 s budget.
 
 Laya questions: `slop` (slop-check's existing question), `asks_reader` (tg-cli's intent question)
 and `first_person` ("Does this read as a person writing in the first person, not as a bot or
 report?"). A `first_person` probability below 0.5 gives `AsUser.NotFirstPerson` (error).
+`asks_reader` goes into the request only when its answer can count, as tg-cli's
+`layaWorthAsking` decides: an agent-authored, not automated message, not tagged `decision`, of
+40 visible characters or more, in which the heuristic found no ask.
 
 ### 4.6 Rule packs and how rules are contributed
 
@@ -413,14 +429,23 @@ flag is forced, optional `only_if_script: cyrillic` judged over all gating field
 `mixed-script`, `format` (named validators `decision`, `problem`, `report`; `decision` also requires
 the sender's explicit `meta.send_format` to be `html`, as tg-cli's `escalationFormatGate` does at
 `features/cli/args.ts`:282-285, because a structured body sent without `--format html` shows literal
-tags; the per-field `format`, which tg-cli detects from the markup, does not count; `problem`,
-`report` and the `intent` kind, with its Laya question, apply only when `meta.agent_authored` or
-`meta.automated` is true, as tg-cli runs them today at `tg`:1708-1715, so a person's
-`tg --tag report "Backup complete"` still goes through; `decision` applies to every sender), `intent`,
-`long-unstructured`, `spoken-markup` (Markdown, HTML, URLs, code and emoji that TTS would read
-aloud), `as-user-emoji` (any emoji codepoint → `AsUser.Emoji`, error) and `bot-formatting` (HTML
-tags, Markdown headings, emphasis, list markers and code spans, and tag badges →
-`AsUser.BotFormatting`, error).
+tags, except for a `--table` send, whose final body tg-cli rechecks without it at `tg`:1653-1656;
+the per-field `format`, which tg-cli detects from the markup, does not count; `decision` applies to
+every sender), `intent` (tg-cli's `classifyIntent`), `long-unstructured` (plain text of 500
+characters or more with no visible structure, a `suggestion`; skipped with attachments, a
+`--table` send or a `meta.send_format` other than `plain` or `null`), `spoken-markup` (Markdown,
+HTML, URLs, code and emoji that TTS would read aloud), `as-user-emoji` (any emoji codepoint →
+`AsUser.Emoji`, error) and `bot-formatting` (HTML tags, Markdown headings, emphasis, list markers
+and code spans, and tag badges → `AsUser.BotFormatting`, error).
+
+The intent kind runs when `meta.agent_authored` or `meta.automated` is true, as tg-cli runs its
+intent gate at `tg`:1708-1715. With `meta.automated` the problem and report format checks are
+skipped (`check = ok`, `features/cli/intent-gate.ts`:449), Laya's `asks_reader` is not asked
+(:335) and `valid` is never set (:391, :474), but a bare or prose question still blocks. The
+`problem` and `report` format rules report what the intent kind finds malformed for a message
+tagged so, so they follow the same rule. The `decision` format always runs. With both flags false,
+no intent, problem or report check runs, so a person's `tg --tag report "Backup complete"` still
+goes through.
 
 Each kind also declares what it reads and where it runs:
 
@@ -466,9 +491,10 @@ suite fails when any rule lacks a positive example (10.1).
   does not.
 - Laya budget: a warm request times out after 1.5 s (a measured warm call takes about 0.2 s,
   task-cli CHANGELOG:41-44). A cold start, which `task classify-server start` performs, may take up
-  to 20 s (measured about 3 s: torch import 0.5 s, model load 2.8 s). After the server is up,
-  text-lint sends one request; any failure is exit 2. The server exits after 15 min idle
-  (`IDLE_SECONDS=900`), so the first send after an idle period pays the cold start once.
+  to 60 s (task-cli `_READY_TIMEOUT_S`; measured about 3 s on an idle machine, about 25 s under
+  heavy load). After the server is up, text-lint sends one request; any failure is exit 2. The
+  server exits after 15 min idle (`IDLE_SECONDS=900`), so the first send after an idle period
+  pays the cold start once.
 - New dependencies: `ast-grep-py` (0.51.0 verified locally: extracts TSX, Python, Swift, Kotlin,
   JSON and YAML strings with line numbers) and `PyYAML` for profiles, packs and `.text-lint.yaml`.
 
@@ -508,7 +534,7 @@ with the right rule id, so a broken wire is caught.
   and their tests.
 - Latency budget: at most 1.5 s at p95 added per send on the workstation for a 4096-character mixed
   Russian and English message with Laya warm (measured baseline: 1.17-1.25 s for slop-check on one
-  Russian line; a warm Laya call about 0.2 s), plus a one-off cold start of at most 20 s on the
+  Russian line; a warm Laya call about 0.2 s), plus a one-off cold start of at most 60 s on the
   first send after 15 min idle (4.7). A send already spends about 1.3 s on `ps`, `lsof` and session discovery
   (tg-cli CHANGELOG.md:639-640). The budget is pinned by a benchmark test in text-lint (10.5).
 
@@ -558,7 +584,7 @@ at `task create` and `task change`. It starts as a warning (like `todo-shaped`),
 
 task-cli also gets `task classify-server start`, the command text-lint runs to start Laya on
 demand. It spawns the server through the existing `tasklib.classify_server._spawn` path, waits
-until the socket accepts a connection (at most 20 s), prints the socket path and exits 0; it exits
+until the socket accepts a connection (at most 60 s), prints the socket path and exits 0; it exits
 1 when the server cannot start. It is idempotent: with the server running it exits 0 without a
 second spawn, and the server's singleton flock lets only one of several concurrent starts spawn
 (`tasklib/classify_server.py`:10-27). text-lint runs in another virtualenv and must not import
@@ -707,10 +733,11 @@ existing dispatcher to `~/.config/git/global-hooks.d/` for every repo on the mac
 - `commit-msg/30-text-lint`: `text-lint check --profile commit --cleanup editor --enforce repo "$1"`.
 
 Both: `text-lint` not on PATH → one warning, exit 0 (as `10-secret-scan` does with a missing
-gitleaks); exit 2 → print the error, exit 0, because CI repeats the check; exit 1 → block. They are
-not `global-hook-protected`, so `GLOBAL_HOOKS_SKIP=text-lint` and `.githooks-skip` work locally;
-CI is the gate that cannot be skipped. A repo opts out of the fragments with
-`git_hooks.dispatcher.fragments.text-lint.enabled: false`.
+gitleaks); exit 2 → print the error and fail (exit 1), because exit 2 now means a configuration
+error or a Laya that could not be reached or started (4.3), and a check that did not run must not
+read as a pass; exit 1 → block. They are not `global-hook-protected`, so
+`GLOBAL_HOOKS_SKIP=text-lint` and `.githooks-skip` work locally; CI is the gate that cannot be
+skipped. A repo opts out of the fragments with `git_hooks.dispatcher.fragments.text-lint.enabled: false`.
 
 ### 8.3 CI slot
 
@@ -720,21 +747,23 @@ same as `workflow-warn.yml`, for a repo that enables the slot without a variant)
 `synchronize`, `reopened` and `ready_for_review` (as `pr-title-lint` does), so editing a PR title
 or body reruns it, and so the workflow file, its `TEXT_LINT_ENFORCE` value and `text-lint.sh` always
 come from the base branch: a PR that edits any of them, or `rig.yaml`, cannot relax the check that
-runs on it. The PR's content is only read as data, never executed: the job checks out the base
-branch, fetches the PR head commit, and passes it to text-lint, which reads blobs with `git show`.
-It installs uv, Python 3.12, the pinned text-lint tag and the pinned Vale release
-(checksum-verified, as slop-cli's `tests.yml` does), then:
+runs on it. The `pull_request_target` job never checks out or executes PR-head code: it checks
+out the base branch, fetches the PR head commit, and reads the PR only as git data (the diff,
+file blobs through `git show`, and commit messages). It installs uv, Python 3.12, the pinned
+text-lint tag and the pinned Vale release (checksum-verified, as slop-cli's `tests.yml` does),
+then runs every check with `--laya-mode ci`, because every profile requires Laya and a CI runner
+has no Laya model:
 
-1. `text-lint diff --base "$BASE_SHA" --head "$HEAD_SHA"` on the PR's changes (`--head` reads the
-   files from that commit instead of the working tree);
-2. `text-lint check --profile commit` on the message of every commit in `$BASE_SHA..$HEAD_SHA`,
-   each read separately with `git log -1 --format=%B`, so a commit that skipped the local
-   commit-msg hook is still checked;
+1. `text-lint diff --base "$BASE_SHA" --head "$HEAD_SHA" --laya-mode ci` on the PR's changes
+   (`--head` reads the files from that commit instead of the working tree);
+2. `text-lint check --profile commit --laya-mode ci` on the message of every commit in
+   `$BASE_SHA..$HEAD_SHA`, each read separately with `git log -1 --format=%B`, so a commit that
+   skipped the local commit-msg hook is still checked;
 3. builds an input@1 document from `$GITHUB_EVENT_PATH` (title and body, stdlib Python, no API
    call, like `pr-title-lint`) and runs `text-lint check --profile pr --laya-mode ci --input-json -
-   --format json`, because a CI runner has no Laya model (locally, the `pr` profile requires Laya);
+   --format json`;
 4. writes findings and applied suppressions to the job summary, with the line
-   `laya: not run (ci runner)`.
+   `laya: not run (ci runner, no local model)`.
 
 All three checks get `--enforce` from the base branch's workflow (`TEXT_LINT_ENFORCE`: `warn` in
 `workflow-warn.yml` and `workflow.yml`, `block` in `workflow-block.yml`), not `--enforce repo`; rig
@@ -817,8 +846,12 @@ without a reason yields `TextLint.SuppressionWithoutReason`.
   `title`, `subagent` and `harness_title` fields plus a 4096-character mixed Russian and English
   `body`), p95 of 5 runs at most 1.5 s with a warm fake Laya socket; all fields go through one Vale
   and one aiw-ru call. `spoken` on 1000 characters, native rules p95 at most 250 ms. Runs in CI.
-- Laya client tests with a fake socket: a warm request that does not answer within 1.5 s fails
-  with exit 2; a cold start waits at most 20 s for the start command, then sends one request.
+- Laya client tests with a fake socket and a fake `task` that records its calls: a warm request
+  that does not answer within 1.5 s fails with exit 2; a cold start runs the start command once,
+  waits at most `start_wait_ms` (60 s in the profiles, shrunk in the test) and sends one request;
+  a start that fails, is missing or hangs past the wait is exit 2; ten units cost one request; a
+  socket named in `TEXT_LINT_LAYA_SOCKET` is never started; `--laya-mode ci` and the automated
+  exception have a test per branch.
 - The integration test runs under `unshare -rn` (no network) where the runner allows it.
 
 ### 10.6 Consumer tests
@@ -835,8 +868,8 @@ suite in CI or on Runpod.
 | Risk | Mitigation |
 |---|---|
 | False positives teach people to skip the tool | changed lines only; 14-day warn phase with weekly triage; disable with a reason |
-| Slower Telegram sends | `tg-bot` and `as-user` budget tests (1.5 s p95 warm); one cold Laya start of at most 20 s after 15 min idle; `chat` runs native rules only |
-| A broken text-lint blocks every commit or send | hooks warn on exit 2 and CI repeats the check; in tg-cli exit 2 means a configuration error or an unreachable Laya, and the refusal names which |
+| Slower Telegram sends | `tg-bot` and `as-user` budget tests (1.5 s p95 warm); one cold Laya start of at most 60 s after 15 min idle; one Laya request per run in every profile |
+| A broken text-lint blocks every commit or send | a missing binary only warns in hooks; exit 2 names its cause (a configuration error or an unreachable Laya), and an automated message is not refused for an unreachable Laya (ruling B) |
 | Local and CI versions differ | CI pins a tag and is authoritative; both print `version` |
 | Suppressions as a bypass | a reason is required; every suppression is listed in the report and the CI summary |
 | Noise from debug output in code (`console.log`) | identifier and one-word filters, per-repo `ui.calls`, warn phase |
@@ -875,9 +908,10 @@ Controller rulings, recorded so the owner can undo them:
 | # | Ruling | Cost if wrong |
 |---|---|---|
 | R1 | Laya starts on demand through `task classify-server start` (5.5); text-lint runs it once on a refused or absent socket and retries. task-cli already owns the spawn, the singleton flock and the idle exit; text-lint must not import tasklib. | one more rig unit later |
-| R2 | Laya budget: warm request timeout 1.5 s; cold start wait up to 20 s; one request after start, any failure exit 2. Sends: 1.5 s p95 warm plus a one-off cold start of at most 20 s after 15 min idle. | a slow first send after idle, or a refused send on a slow cold start; the numbers are tuned in one place (4.7) |
-| R3 | Laya is used by `tg-bot` (`asks_reader`, slop), `as-user` and `spoken` (slop, `first_person`), `issue` and `pr` (slop); not by `commit`, `ui-strings`, `prose`, `chat` or `diff`. | add `laya: required` to those profile files later |
-| R4 | The CI PR-body check runs `--profile pr --laya-mode ci`, reported as `laya: not run (ci runner)`; `--laya-mode ci` needs `CI=true`. | a PR body written outside the skill gets to CI with no Laya verdict |
+| R2 | Laya budget: warm request timeout 1.5 s; cold start wait up to 60 s (task-cli `_READY_TIMEOUT_S`; about 25 s measured under heavy load); one request after start, any failure exit 2. Sends: 1.5 s p95 warm plus a one-off cold start of at most 60 s after 15 min idle. | a slow first send after idle, or a refused send on a slow cold start; the numbers are tuned in one place (4.7) |
+| R3 | Replaced on 2026-10-17 (Main relaying the owner): every profile requires Laya (`prose`, `issue`, `pr`, `commit`, `tg-bot`, `as-user`, `spoken`, `chat`, `ui-strings`), asking at least `slop`; `tg-bot` asks `asks_reader` and `slop`, `as-user` and `spoken` ask `slop` and `first_person`. Each run sends one request: all units joined with blank lines, cut at `max_chars`; the answers apply to the whole run. | a hook run pays one warm Laya request (about 0.2 s), and an unreachable Laya stops commits until it is fixed |
+| R4 | `--laya-mode ci` tries the socket first; if one answers, Laya runs normally. Only when `CI=true` and no socket answers is Laya skipped, with `engines.laya = {"status": "not run", "reason": "ci runner, no local model"}` and a report line saying so; it never starts a server. Without `CI=true` it is exit 2. Every CI check (diff, commit messages, PR body) runs with it (8.3); every other run hard-fails with exit 2 when the socket is absent and `task classify-server start` cannot start it. | a PR gets to CI with no Laya verdict |
+| B | Owner-delegated ruling (2026-10-17): when Laya cannot be reached or started and `meta.automated` is true, the run does not fail: `engines.laya = {"status": "unreachable", ...}`, one report line, and the other engines decide the verdict. Every other run, agent- or human-authored, is exit 2. | a program's alert goes out unchecked by Laya during an outage |
 | R5 | The flag that turned Laya off and the `TG_LAYA` off switch are removed; `TEXT_LINT_LAYA_SOCKET` and `TEXT_LINT_LAYA_TIMEOUT_MS` stay for tests and non-default sockets. | a Laya outage refuses sends until the server is fixed |
 | R6 | Emoji rules, `TextLint.DoneEmoji` included, are off in `tg-bot` (the status-report phrase is still caught by `TextLint.StatusReport` / `RuStatusReport`). `as-user` adds `AsUser.Emoji` and `AsUser.BotFormatting` (errors) and `AsUser.NotFirstPerson` (Laya `first_person` below 0.5, error, blocking after the warn phase). | emoji-only status replies from the bot go unflagged |
 | R7 | Profile selection in tg-cli, for when Tasks 12-13 resume: bot sends → `tg-bot`; `tg user send`, `tg call --say` → `as-user`; duplex replies → `spoken`. Chosen in code, no CLI flag. | a send path checked with the wrong identity until its call site is changed |

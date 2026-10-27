@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "text-lint/report@1",
+  "title": "text-lint report@1",
+  "description": "What `text-lint check --format json` prints.",
+  "type": "object",
+  "required": ["schema", "version", "profile", "enforce", "verdict", "score", "findings", "suppressed", "engines"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "text-lint/report@1"},
+    "version": {"type": "string"},
+    "profile": {"type": "string"},
+    "enforce": {"enum": ["warn", "block"]},
+    "verdict": {"enum": ["pass", "warn", "block"]},
+    "score": {"type": "integer", "minimum": 0, "maximum": 100},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "suppressed": {"type": "array", "items": {"$ref": "#/$defs/suppressed"}},
+    "engines": {"type": "object", "additionalProperties": {"$ref": "#/$defs/engine"}},
+    "intent": {"$ref": "#/$defs/intent"}
+  },
+  "$defs": {
+    "nullable_string": {"type": ["string", "null"]},
+    "finding": {
+      "type": "object",
+      "required": ["rule_id", "engine", "severity", "line", "col", "span", "match", "message",
+                   "suggestion", "field", "path", "key"],
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": {"type": "string"},
+        "engine": {"type": "string"},
+        "severity": {"enum": ["error", "warning", "suggestion"]},
+        "line": {"type": "integer", "minimum": 1},
+        "col": {"type": "integer", "minimum": 1},
+        "span": {"type": "array", "prefixItems": [{"type": "integer", "minimum": 0}, {"type": "integer", "minimum": 0}],
+                 "minItems": 2, "maxItems": 2},
+        "match": {"type": "string"},
+        "message": {"type": "string"},
+        "suggestion": {"$ref": "#/$defs/nullable_string"},
+        "field": {"$ref": "#/$defs/nullable_string"},
+        "path": {"$ref": "#/$defs/nullable_string"},
+        "key": {"$ref": "#/$defs/nullable_string"}
+      }
+    },
+    "suppressed": {
+      "type": "object",
+      "required": ["rule_id", "reason"],
+      "properties": {
+        "rule_id": {"type": "string"},
+        "path": {"$ref": "#/$defs/nullable_string"},
+        "field": {"$ref": "#/$defs/nullable_string"},
+        "key": {"$ref": "#/$defs/nullable_string"},
+        "line": {"type": "integer", "minimum": 1},
+        "reason": {"type": "string"}
+      }
+    },
+    "engine": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["ok", "skipped", "unreachable", "not run"]},
+        "reason": {"type": "string"}
+      }
+    },
+    "intent": {
+      "type": "object",
+      "required": ["kinds", "action", "reason", "follow_ups", "valid", "hints", "laya_p"],
+      "additionalProperties": false,
+      "properties": {
+        "kinds": {"type": "array", "items": {"type": "string"}},
+        "action": {"enum": ["pass", "follow-up", "block"]},
+        "reason": {"$ref": "#/$defs/nullable_string"},
+        "follow_ups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "quote"],
+            "additionalProperties": false,
+            "properties": {"kind": {"enum": ["decision", "problem"]}, "quote": {"type": "string"}}
+          }
+        },
+        "valid": {"enum": ["decision", "problem", null]},
+        "hints": {"type": "array", "items": {"type": "string"}},
+        "laya_p": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    }
+  }
+}

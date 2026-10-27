@@ -1,0 +1,14 @@
+# tg-cli's intent gate (classifyIntent): a decision, a problem and a report in one message
+# (native/intent.py).
+id: Intent.Mixed
+kind: intent
+severity: error
+profiles: [tg-bot]
+message: "This message mixes a decision, a problem and a report; send them as separate messages."
+replacement: "Send the report, the problem and each decision as their own messages (decision: --tag decision, problem: --tag problem, report: tg report)."
+params: {reason: mixed}
+examples:
+  flag:
+    - "Смержил #690, тесты зелёные. Блокер: нет доступа к проду. Мержить #694 или ждать?"
+  pass:
+    - "Смержил #690, тесты зелёные. Блокера нет."

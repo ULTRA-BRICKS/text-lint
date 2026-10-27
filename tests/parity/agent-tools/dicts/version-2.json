@@ -1,0 +1,1 @@
+{"version": 2, "rules": [{"id": "pochtit-as-fix", "pattern": "\\bпочт(?:ил[аио]?|или|ить)\\b", "flags": "iu", "replacement": "починил / починен / патчил", "why": "There is no verb 'почтить' meaning 'to fix'."}]}

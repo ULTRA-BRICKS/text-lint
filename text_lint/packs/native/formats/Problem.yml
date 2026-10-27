@@ -1,0 +1,14 @@
+# tg-cli's problem format (validateProblemFormat): a malformed `--tag problem` message from an
+# agent, as the intent classifier finds it (native/intent.py); skipped for --automated.
+id: Format.Problem
+kind: format
+severity: error
+profiles: [tg-bot]
+message: "This problem (a blocker for the human) is not in the problem format (skill: decision-request-discipline)."
+replacement: "<h3>Context</h3><p>…</p><hr><h3>What is blocked</h3><ul><li>…</li></ul><hr><h3>What I need from you</h3><ul><li>…</li></ul><hr><h3>Where to look</h3><ul><li>file.ts:42 / log / link</li></ul>"
+params: {validator: problem}
+examples:
+  flag:
+    - "Блокер: CI падает, без токена не починить."
+  pass:
+    - "<h3>Контекст</h3><p>Деплой tg-cli на прод застрял: CI падает на шаге setup-bun из-за rate limit GitHub API.</p><hr>\n<h3>Что заблокировано</h3><ul><li>мерж #692 и всех PR после него</li></ul><hr>\n<h3>Что нужно от тебя</h3><ul><li>нужен токен GitHub с правом read:packages для раннера</li></ul><hr>\n<h3>Где смотреть</h3><ul><li>.github/workflows/ci.yml:20</li></ul>"

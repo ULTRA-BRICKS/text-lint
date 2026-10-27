@@ -1,0 +1,9 @@
+id: AsUser.BotFormatting
+kind: bot-formatting
+severity: error
+profiles: [as-user, spoken]
+message: "Use plain text when writing as the owner."
+params: {}
+examples:
+  flag: ["**Done**"]
+  pass: ["I fixed the test."]

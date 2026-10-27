@@ -1,7 +1,8 @@
 """Text plumbing shared by the engines: protected regions, paragraph language, offsets.
 
-Every transformation here keeps the text's length and its newlines, so an offset, line or
-column an engine reports on a masked copy points at the same character of the input.
+Masking keeps the text's length and its newlines, so an offset, line or column an engine
+reports on a masked copy points at the same character of the input. HTML stripping changes
+the length and returns an offset map instead.
 """
 
 import bisect
@@ -51,13 +52,19 @@ def protected_spans(text):
     for m in _INLINE_CODE.finditer(text):
         if not _overlaps(fenced, m.start(), m.end()):
             spans.append((m.start(), m.end()))
+    spans += [(s, e) for s, e in url_spans(text) if not _overlaps(spans, s, e)]
+    return sorted(spans)
+
+
+def url_spans(text):
+    """[start, end) spans of the URLs in ``text``, trailing sentence punctuation excluded."""
+    spans = []
     for m in _URL.finditer(text):
         end = m.end()
         while end > m.start() and text[end - 1] in _URL_TAIL:
             end -= 1
-        if not _overlaps(spans, m.start(), end):
-            spans.append((m.start(), end))
-    return sorted(spans)
+        spans.append((m.start(), end))
+    return spans
 
 
 _QUOTE = re.compile(r"[ \t]*>[ \t]?")
@@ -169,3 +176,73 @@ class LineIndex:
         start = self.starts[line - 1]
         end = self.starts[line] - 1 if line < len(self.starts) else len(self.text)
         return self.text[start:end]
+
+
+# HTML normalization, a port of tg-cli's stripForDictionary (features/cli/dict-gate.ts:289):
+# <pre> and <code> elements become one space, block tags a newline so the words on either
+# side stay apart, other tags vanish, then entities decode in a single pass.
+_PRE = re.compile(r"<pre\b[^>]*>[\s\S]*?</pre\s*>", re.IGNORECASE)
+_CODE = re.compile(r"<code\b[^>]*>[\s\S]*?</code\s*>", re.IGNORECASE)
+_BLOCK_TAG = re.compile(
+    r"</?(?:br|p|div|li|ul|ol|tr|td|th|table|thead|tbody|caption|h[1-6]|hr|blockquote|details|"
+    r"summary|section|article)\b[^>]*>", re.IGNORECASE)
+# render/html.ts stripHtmlTags: whole tags, and an unclosed tag at the very end of the text.
+_TAG = re.compile(r"<[^>]*>|<[/!A-Za-z][^>]*\Z")
+_ENTITY = re.compile(r"&(#x[0-9a-f]+|#[0-9]+|[a-z]+);", re.IGNORECASE)
+_NAMED_ENTITIES = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'", "nbsp": " "}
+
+
+def _decode_entity(m):
+    body = m.group(1)
+    if body[0] == "#":
+        digits, base = (body[2:], 16) if body[1] in "xX" else (body[1:], 10)
+        # Leading zeros count toward int()'s digit limit, so they go first; anything longer
+        # than a code point is left as written.
+        digits = digits.lstrip("0") or "0"
+        cp = int(digits, base) if len(digits) <= 7 else -1
+        # A lone surrogate could not be written to an engine's stdin; it stays as written too.
+        return chr(cp) if 0 <= cp <= 0x10FFFF and not 0xD800 <= cp <= 0xDFFF else m.group()
+    return _NAMED_ENTITIES.get(body.lower(), m.group())
+
+
+def _replace(text, offsets, pattern, repl):
+    """``pattern`` replaced by ``repl(match)`` in ``text``; every output character keeps the
+    input offset of what it came from (a replacement maps to the start of its match)."""
+    out, out_offsets, pos = [], [], 0
+    for m in pattern.finditer(text):
+        out.append(text[pos:m.start()])
+        out_offsets.extend(offsets[pos:m.start()])
+        new = repl(m)
+        out.append(new)
+        # Text left as written (an unknown entity) keeps its own offsets.
+        out_offsets.extend(offsets[m.start():m.end()] if new == m.group() else [offsets[m.start()]] * len(new))
+        pos = m.end()
+    out.append(text[pos:])
+    out_offsets.extend(offsets[pos:])
+    return "".join(out), out_offsets
+
+
+def strip_html(text):
+    """(what a Telegram reader sees of the HTML ``text``, the offset in ``text`` of each of its
+    characters)."""
+    offsets = list(range(len(text)))
+    for pattern, repl in ((_PRE, lambda m: " "), (_CODE, lambda m: " "), (_BLOCK_TAG, lambda m: "\n"),
+                          (_TAG, lambda m: ""), (_ENTITY, _decode_entity)):
+        text, offsets = _replace(text, offsets, pattern, repl)
+    return text, offsets
+
+
+def html_source_end(raw, offset, char, limit):
+    """End in ``raw`` of what became ``char``, a character of ``strip_html(raw)`` whose source
+    starts at ``offset``; ``limit`` is where the next output character's source starts. A
+    decoded entity (`&mdash;`) or a replaced element covers its whole source; a literal
+    character covers one."""
+    m = _ENTITY.match(raw, offset)
+    if m and m.end() <= limit and _decode_entity(m) == char:
+        return m.end()
+    if raw[offset:offset + 1] != char:
+        for pattern in (_PRE, _CODE, _BLOCK_TAG):
+            m = pattern.match(raw, offset)
+            if m and m.end() <= limit:
+                return m.end()
+    return offset + 1

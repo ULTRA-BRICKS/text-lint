@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "bad-flags-rule",
+      "pattern": "\\bпочт(?:ил[аио]?|или|ить)\\b",
+      "flags": 5,
+      "replacement": "починил / починен / патчил",
+      "why": "There is no verb 'почтить' meaning 'to fix'."
+    },
+    {
+      "id": "land-landing-in-russian",
+      "pattern": "\\bland(?:ing|ed|s)?\\b",
+      "flags": "iu",
+      "only_if_cyrillic": true,
+      "replacement": "применяется / применён / влит",
+      "why": "English 'land/landing' must not appear in Russian text."
+    }
+  ]
+}

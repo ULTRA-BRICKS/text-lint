@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "pochtit-as-fix",
+      "pattern": "\\bпочт(?:ил[аио]?|или|ить)\\b",
+      "flags": "iu",
+      "replacement": "починил / починен / патчил"
+    }
+  ]
+}

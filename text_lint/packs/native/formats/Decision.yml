@@ -1,0 +1,14 @@
+# tg-cli's escalation-format gate (validateEscalationFormat, args.ts:282-285): a `--tag decision`
+# body in the decision-request format, sent with --format html (native/formats.py).
+id: Format.Decision
+kind: format
+severity: error
+profiles: [tg-bot]
+message: "--tag decision is an escalation and must follow the decision-request format (skill: decision-request-discipline) as a structured Rich Message, so the reader can answer in ~30s without opening the repo and without reading a wall of text."
+replacement: "<h3>Context</h3><p>features/foo.ts:42 does X.</p><hr><h3>Glossary</h3><ul><li>X — what the internal name means</li></ul><hr><h3>Options</h3><table><tr><th>Option</th><th>Pros</th><th>Cons</th></tr><tr><td>A</td><td>fast</td><td>risky</td></tr><tr><td>B</td><td>safe</td><td>slow</td></tr></table><hr><h3>Recommendation</h3><ul><li>A — because …</li></ul><hr><h3>Where to look</h3><ul><li>features/foo.ts:42</li></ul>"
+params: {validator: decision}
+examples:
+  flag:
+    - "Should we ship A or B?"
+  pass:
+    - "<h3>Context</h3><p>The resolver in features/foo.ts:42 picks the wrong click target on cold maps.</p><hr>\n<h3>Options</h3><table><tr><th>Option</th><th>Pros</th><th>Cons</th></tr>\n<tr><td>A</td><td>fast</td><td>risky</td></tr><tr><td>B</td><td>safe</td><td>slow</td></tr></table><hr>\n<h3>Recommendation</h3><ul><li>I recommend A because it is faster</li></ul><hr>\n<h4>Where to look</h4><ul><li>features/foo.ts:42</li></ul>\n<hr><h4>Glossary</h4><ul><li>resolver — picks the element a click lands on</li></ul>"

@@ -12,7 +12,9 @@ readme = "README.md"
 license = "MIT"
 # aiw-ru requires Python >= 3.12.
 requires-python = ">=3.12"
-dependencies = ["aiw-ru>=2.5,<3"]
+# PyYAML reads the profiles (and, later, rule packs and .text-lint.yaml); jsonschema
+# validates native rule files against schema/native-rule-v1.json.
+dependencies = ["aiw-ru>=2.5,<3", "PyYAML>=6,<7", "jsonschema>=4,<5"]
 
 [project.scripts]
 text-lint = "text_lint.cli:main"
@@ -23,10 +25,11 @@ slop-check = "text_lint.shim:main"
 [tool.setuptools.packages.find]
 include = ["text_lint*"]
 
-# The vendored Vale styles, config and rule samples ship inside the package, so a wheel
-# install works offline.
+# Every runtime asset ships inside the package, so a wheel install works offline: profiles,
+# JSON schemas, rule packs (the vendored Vale styles, vale.ini, samples, native packs) and
+# the UI-string extraction rules.
 [tool.setuptools.package-data]
-text_lint = ["packs/vale/vale.ini", "packs/vale/samples.tsv", "packs/vale/styles/**/*"]
+text_lint = ["profiles/*.yaml", "schema/*.json", "packs/**/*", "extract/rules/*.yml"]
 
 [tool.setuptools.dynamic]
 version = { attr = "text_lint.__version__" }

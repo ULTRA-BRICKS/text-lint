@@ -1,0 +1,15 @@
+# tg-cli's intent gate (classifyIntent): an untagged message that asks the reader to decide
+# outside the decision-request format (native/intent.py).
+id: Intent.MalformedDecision
+kind: intent
+severity: error
+profiles: [tg-bot]
+message: "This message asks the reader to decide, but it is not in the decision-request format (skill: decision-request-discipline)."
+replacement: "<h3>Context</h3><p>features/foo.ts:42 does X.</p><hr><h3>Glossary</h3><ul><li>X — what the internal name means</li></ul><hr><h3>Options</h3><table><tr><th>Option</th><th>Pros</th><th>Cons</th></tr><tr><td>A</td><td>fast</td><td>risky</td></tr><tr><td>B</td><td>safe</td><td>slow</td></tr></table><hr><h3>Recommendation</h3><ul><li>A — because …</li></ul><hr><h3>Where to look</h3><ul><li>features/foo.ts:42</li></ul>"
+params: {reason: malformed-decision}
+examples:
+  flag:
+    - "Should we deploy today? Which region should we use?"
+  pass:
+    - "ок, принял, начинаю"
+    - "<h3>Context</h3><p>The resolver in features/foo.ts:42 picks the wrong click target on cold maps.</p><hr>\n<h3>Options</h3><table><tr><th>Option</th><th>Pros</th><th>Cons</th></tr>\n<tr><td>A</td><td>fast</td><td>risky</td></tr><tr><td>B</td><td>safe</td><td>slow</td></tr></table><hr>\n<h3>Recommendation</h3><ul><li>I recommend A because it is faster</li></ul><hr>\n<h4>Where to look</h4><ul><li>features/foo.ts:42</li></ul>\n<hr><h4>Glossary</h4><ul><li>resolver — picks the element a click lands on</li></ul>"

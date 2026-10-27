@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "text-lint/input@1",
+  "title": "text-lint input@1",
+  "description": "What `text-lint check --input-json` reads: named fields of one message plus its meta data.",
+  "type": "object",
+  "required": ["schema", "fields"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "text-lint/input@1"},
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "text", "format"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "description": "body, caption, title, subagent, harness_title, ..."},
+          "text": {"type": "string"},
+          "format": {"enum": ["plain", "markdown", "html"]},
+          "gate": {"type": "boolean", "default": true,
+                   "description": "false: findings are reported but never count toward the verdict"}
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tag": {"type": ["string", "null"]},
+        "agent_authored": {"type": "boolean", "default": false},
+        "automated": {"type": "boolean", "default": false},
+        "send_format": {"enum": ["plain", "markdown", "html", null],
+                        "description": "the sender's explicit format flag, independent of each field's format"},
+        "attachments": {"type": "integer", "minimum": 0, "default": 0},
+        "table": {"type": "boolean", "default": false}
+      }
+    }
+  }
+}

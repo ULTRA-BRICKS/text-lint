@@ -1,0 +1,13 @@
+# Agent replies (Stop hook): native rules and Laya's slop question.
+name: chat
+fail_on: error
+markup: markdown
+packs: [dict, script]
+engines:
+  native: {enabled: true}
+  vale: {enabled: false}
+  aiw-ru: {enabled: false}
+  laya:
+    enabled: true
+    optional: false  # required: no flag or env var turns Laya off
+    options: {questions: [slop], max_chars: 2000, timeout_ms: 1500, start_wait_ms: 60000}

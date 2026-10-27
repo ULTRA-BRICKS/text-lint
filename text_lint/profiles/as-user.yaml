@@ -1,0 +1,14 @@
+# Text sent as the owner (tg user send, tg call --say): emoji and bot formatting are errors.
+# Vale and aiw-ru findings are capped at warning during the warn phase (spec 4.5).
+name: as-user
+fail_on: error
+markup: plain
+packs: [dict, script, as-user]
+engines:
+  native: {enabled: true}
+  vale: {enabled: true, optional: true, cap: warning, options: {ext: .tg}}
+  aiw-ru: {enabled: true, optional: true, cap: warning, options: {context: chat}}
+  laya:
+    enabled: true
+    optional: false  # required: no flag or env var turns Laya off
+    options: {questions: [slop, first_person], max_chars: 2000, timeout_ms: 1500, start_wait_ms: 60000}

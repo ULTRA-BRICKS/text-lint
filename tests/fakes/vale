@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Fake `vale` for unit tests: same CLI surface and JSON shape, a few fixed patterns.
 
-Real Vale reports Line plus Span = [first, last] 1-based rune columns within that line.
+`vale --config X --no-global --output=JSON FILE...`: like real Vale, the JSON maps each file
+that has alerts to them; Line plus Span = [first, last] 1-based rune columns within that line.
 FAKE_VALE_LOG=<file> appends the argv as one JSON line; FAKE_VALE_FAIL=1 exits 2 like a
-Vale runtime error.
+Vale runtime error; FAKE_VALE_OUTPUT is printed instead, with @FILE@ replaced by the first file.
 """
 import json
 import os
@@ -16,6 +17,7 @@ PATTERNS = [
     ("ai-tells.EmDashUsage", "error", r"—"),
     ("TextLint.RuStoitOtmetit", "warning", r"Стоит отметить"),
     ("TextLint.Utilize", "warning", r"\butilize\b"),
+    ("TextLint.DoneEmoji", "warning", r"✅ Done"),
 ]
 
 args = sys.argv[1:]
@@ -25,27 +27,33 @@ if os.environ.get("FAKE_VALE_LOG"):
 if args == ["--version"]:
     print("vale version 0.0.0-fake")
     sys.exit(0)
+files = [a for i, a in enumerate(args) if not a.startswith("--") and args[i - 1] != "--config"]
 if os.environ.get("FAKE_VALE_OUTPUT") is not None:
-    print(os.environ["FAKE_VALE_OUTPUT"])
+    print(os.environ["FAKE_VALE_OUTPUT"].replace("@FILE@", files[0] if files else ""))
     sys.exit(0)
 if os.environ.get("FAKE_VALE_FAIL"):
     print("E100 [fake] Runtime error", file=sys.stderr)
     sys.exit(2)
-ext = next(a.split("=", 1)[1] for a in args if a.startswith("--ext="))
-alerts = []
-for lineno, line in enumerate(sys.stdin.read().split("\n"), 1):
-    for check, severity, pattern in PATTERNS:
-        for m in re.finditer(pattern, line):
-            action = {"Name": "", "Params": None}
-            suggestions = []
-            if check == "TextLint.Utilize":
-                action = {"Name": "replace", "Params": ["use"]}
-                suggestions = ["use"]
-            alerts.append({
-                "Action": action, "Suggestions": suggestions, "Span": [m.start() + 1, m.end()],
-                "Check": check, "Description": "", "Link": "",
-                "Message": f"fake {check}: '{m.group(0)}'", "Severity": severity,
-                "Match": m.group(0), "Line": lineno,
-            })
-print(json.dumps({f"stdin{ext}": alerts} if alerts else {}))
-sys.exit(1 if any(a["Severity"] == "error" for a in alerts) else 0)
+report = {}
+for path in files:
+    with open(path, encoding="utf-8", newline="") as fh:
+        text = fh.read()
+    alerts = []
+    for lineno, line in enumerate(text.split("\n"), 1):
+        for check, severity, pattern in PATTERNS:
+            for m in re.finditer(pattern, line):
+                action = {"Name": "", "Params": None}
+                suggestions = []
+                if check == "TextLint.Utilize":
+                    action = {"Name": "replace", "Params": ["use"]}
+                    suggestions = ["use"]
+                alerts.append({
+                    "Action": action, "Suggestions": suggestions, "Span": [m.start() + 1, m.end()],
+                    "Check": check, "Description": "", "Link": "",
+                    "Message": f"fake {check}: '{m.group(0)}'", "Severity": severity,
+                    "Match": m.group(0), "Line": lineno,
+                })
+    if alerts:
+        report[path] = alerts
+print(json.dumps(report))
+sys.exit(1 if any(a["Severity"] == "error" for alerts in report.values() for a in alerts) else 0)

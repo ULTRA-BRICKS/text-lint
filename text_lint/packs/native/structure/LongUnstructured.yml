@@ -1,0 +1,14 @@
+# tg-cli's long-message advisory (shouldWarnLongUnstructuredPlainMessage): a plain message of
+# 500 characters or more with no visible structure (native/structure.py). Advisory only.
+id: Structure.LongUnstructured
+kind: long-unstructured
+severity: suggestion
+profiles: [tg-bot]
+message: "Long plain message has little visible structure. Use headings, blank-line paragraphs, lists/tables, or --format html / tg --table for readable Telegram reports."
+params: {min_chars: 500}
+examples:
+  flag:
+    - "detail0 detail1 detail2 detail3 detail4 detail5 detail6 detail7 detail8 detail9 detail10 detail11 detail12 detail13 detail14 detail15 detail16 detail17 detail18 detail19 detail20 detail21 detail22 detail23 detail24 detail25 detail26 detail27 detail28 detail29 detail30 detail31 detail32 detail33 detail34 detail35 detail36 detail37 detail38 detail39 detail40 detail41 detail42 detail43 detail44 detail45 detail46 detail47 detail48 detail49 detail50 detail51 detail52 detail53 detail54 detail55 detail56 detail57 detail58 detail59 detail60 detail61 detail62 detail63 detail64 detail65 detail66 detail67 detail68 detail69 detail70 detail71 detail72 detail73 detail74 detail75 detail76 detail77 detail78 detail79 detail80 detail81 detail82 detail83 detail84 detail85 detail86 detail87 detail88 detail89"
+  pass:
+    - "Summary\n\ndetail0 detail1 detail2 detail3 detail4 detail5 detail6 detail7 detail8 detail9 detail10 detail11 detail12 detail13 detail14 detail15 detail16 detail17 detail18 detail19 detail20 detail21 detail22 detail23 detail24 detail25 detail26 detail27 detail28 detail29 detail30 detail31 detail32 detail33 detail34 detail35 detail36 detail37 detail38 detail39 detail40 detail41 detail42 detail43 detail44 detail45 detail46 detail47 detail48 detail49 detail50 detail51 detail52 detail53 detail54 detail55 detail56 detail57 detail58 detail59 detail60 detail61 detail62 detail63 detail64 detail65 detail66 detail67 detail68 detail69 detail70 detail71 detail72 detail73 detail74 detail75 detail76 detail77 detail78 detail79 detail80 detail81 detail82 detail83 detail84 detail85 detail86 detail87 detail88 detail89"
+    - "short status ping"

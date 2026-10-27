@@ -1,0 +1,14 @@
+# tg-cli's intent gate (classifyIntent): an untagged report of finished work with no reference
+# or verification (native/intent.py).
+id: Intent.MalformedReport
+kind: intent
+severity: error
+profiles: [tg-bot]
+message: "This report is not in the report format (tg help report)."
+replacement: "tg report --title … --ticket … --impact … --verify-cmd … --verify-result …"
+params: {reason: malformed-report}
+examples:
+  flag:
+    - "Готово, задеплоил."
+  pass:
+    - "Готово: #690 смержен, CI зелёный, деплой прошёл."

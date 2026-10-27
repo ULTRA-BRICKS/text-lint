@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Fake task-cli `task` for tests: `task classify-server start` prints FAKE_TASK_SOCKET.
+
+FAKE_TASK_LOG=<file> appends the argv as one JSON line; FAKE_TASK_FAIL=1 exits 1;
+FAKE_TASK_HANG=<seconds> sleeps that long before answering (a start that never finishes). Any
+other command exits 2, so a test can never reach the real task-cli through this name.
+"""
+import json
+import os
+import sys
+import socket
+import time
+
+args = sys.argv[1:]
+if os.environ.get("FAKE_TASK_LOG"):
+    with open(os.environ["FAKE_TASK_LOG"], "a", encoding="utf-8") as log:
+        log.write(json.dumps(args) + "\n")
+if args != ["classify-server", "start"]:
+    print(f"fake task: unsupported command {args}", file=sys.stderr)
+    sys.exit(2)
+if os.environ.get("FAKE_TASK_FAIL"):
+    print("fake task: classify-server failed to start", file=sys.stderr)
+    sys.exit(1)
+if os.environ.get("FAKE_TASK_HANG"):
+    time.sleep(float(os.environ["FAKE_TASK_HANG"]))
+if os.environ.get("FAKE_TASK_CREATE_SOCKET"):
+    # A real cold-start fixture: no listener exists until this fake command runs.
+    # The child handles exactly one predict request, then exits; it never imports Laya.
+    ready_r, ready_w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(ready_r)
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(os.environ["FAKE_TASK_SOCKET"])
+                listener.listen(1)
+                listener.settimeout(5)
+                os.write(ready_w, b"1")
+                os.close(ready_w)
+                conn, _ = listener.accept()
+                with conn, conn.makefile("rb") as reader:
+                    request = json.loads(reader.readline())
+                    with open(os.environ["FAKE_TASK_REQUEST_LOG"], "w", encoding="utf-8") as log:
+                        json.dump(request, log)
+                    answers = {q: {"type": "noul", "noul": 0.1} for q in request["questions"]}
+                    conn.sendall(json.dumps({"ok": True, "result": {"answers": answers}}).encode() + b"\n")
+        finally:
+            os._exit(0)
+    os.close(ready_w)
+    with open(os.environ["FAKE_TASK_CHILD_PID"], "w", encoding="utf-8") as log:
+        log.write(str(pid))
+    if os.read(ready_r, 1) != b"1":
+        sys.exit(1)
+    os.close(ready_r)
+print(os.environ.get("FAKE_TASK_SOCKET", ""))

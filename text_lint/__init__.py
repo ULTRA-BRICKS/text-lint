@@ -6,4 +6,8 @@ pyproject.toml [project.scripts]. bin/text-lint and bin/slop-check are thin shim
 symlink install path.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
+
+# Import the internal check module before binding the public function, so later
+# imports of text_lint.check cannot replace this callable with the module.
+from .api import InputDocument, TextLintError, check  # noqa: F401

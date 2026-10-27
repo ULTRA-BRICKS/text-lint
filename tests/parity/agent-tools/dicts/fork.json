@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "fork-to-alex",
+      "pattern": "\\bфорк[а-яё]*|\\bfork(?:s|ed|ing)?\\b",
+      "flags": "iu",
+      "only_if_cyrillic": true,
+      "replacement": "субагент / субагенты",
+      "why": "Dispatched subagents are an implementation detail; never say 'fork' to Alex."
+    }
+  ]
+}

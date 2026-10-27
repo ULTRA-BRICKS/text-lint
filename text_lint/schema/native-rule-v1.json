@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "text-lint/native-rule@1",
+  "title": "text-lint native rule v1",
+  "description": "One rule file in text_lint/packs/native/<pack>/: a code-backed kind, its params and its own examples (at least one text it must flag and one it must pass).",
+  "type": "object",
+  "required": ["id", "kind", "severity", "profiles", "message", "params", "examples"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Z][A-Za-z]*\\.[A-Z][A-Za-z0-9]*$"},
+    "kind": {"type": "string", "minLength": 1},
+    "severity": {"enum": ["error", "warning", "suggestion"]},
+    "profiles": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+    "message": {"type": "string", "minLength": 1, "description": "{match} is replaced by the matched text."},
+    "params": {"type": "object"},
+    "examples": {
+      "type": "object",
+      "required": ["flag", "pass"],
+      "additionalProperties": false,
+      "properties": {
+        "flag": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "pass": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+      }
+    },
+    "replacement": {"type": "string"},
+    "why": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "pattern"}}, "required": ["kind"]},
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "required": ["pattern"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern": {"type": "string", "minLength": 1},
+              "flags": {"type": "string"},
+              "only_if_script": {"enum": ["cyrillic"]}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "stray-cjk"}}, "required": ["kind"]},
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "required": ["dominant_share", "dominant_min"],
+            "additionalProperties": false,
+            "properties": {
+              "dominant_share": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+              "dominant_min": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "mixed-script"}}, "required": ["kind"]},
+      "then": {"properties": {"params": {"type": "object", "additionalProperties": false}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "format"}}, "required": ["kind"]},
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "required": ["validator"],
+            "additionalProperties": false,
+            "properties": {"validator": {"enum": ["decision", "problem", "report"]}}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "intent"}}, "required": ["kind"]},
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "required": ["reason"],
+            "additionalProperties": false,
+            "properties": {"reason": {"enum": ["malformed-decision", "malformed-problem", "malformed-report", "mixed"]}}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "long-unstructured"}}, "required": ["kind"]},
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "required": ["min_chars"],
+            "additionalProperties": false,
+            "properties": {"min_chars": {"type": "integer", "minimum": 1}}
+          }
+        }
+      }
+    }
+  ]
+}

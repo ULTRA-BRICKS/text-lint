@@ -113,7 +113,7 @@ def run_install(machine, manager, path_extra=(), also=(), **fake_env):
         **fake_env,
     }
     return subprocess.run([_BASH, str(ROOT / "install.sh")], env=env, capture_output=True,
-                          text=True, timeout=60)
+                          text=True, timeout=60, check=False)
 
 
 def installed(machine):

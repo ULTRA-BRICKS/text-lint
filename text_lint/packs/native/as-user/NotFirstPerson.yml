@@ -1,0 +1,9 @@
+id: AsUser.NotFirstPerson
+kind: first-person
+severity: error
+profiles: [as-user, spoken]
+message: "Write as a person in the first person."
+params: {}
+examples:
+  flag: ["The bot completed the task."]
+  pass: ["I fixed the test."]

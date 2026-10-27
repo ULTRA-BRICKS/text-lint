@@ -1,0 +1,10 @@
+# tg-cli's cjk-guard: a lone ideograph stuck into a Latin or Cyrillic word (native/script.py).
+id: Script.StrayCjk
+kind: stray-cjk
+severity: error
+profiles: [prose, issue, pr, commit, tg-bot, as-user, chat, spoken, ui-strings]
+message: "Stray CJK character '{match}' inside a word; delete it."
+params: {dominant_share: 0.5, dominant_min: 3}
+examples:
+  flag: ["Проверил 的тесты, всё зелёное"]
+  pass: ["日本語のテキストです", "Commit 8ab6a11 fixes the cache", "Проверил 的 тесты"]

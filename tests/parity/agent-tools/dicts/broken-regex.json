@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "broken-rule",
+      "pattern": "(unclosed",
+      "flags": "iu",
+      "replacement": "n/a",
+      "why": "n/a"
+    }
+  ]
+}

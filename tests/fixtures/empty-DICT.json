@@ -1,0 +1,1 @@
+{"version": 1, "description": "No rules: tests never read the owner's ~/.claude/DICT.json.", "rules": []}

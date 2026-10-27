@@ -1,0 +1,9 @@
+id: AsUser.Emoji
+kind: as-user-emoji
+severity: error
+profiles: [as-user, spoken]
+message: "Remove emoji from text sent as the owner."
+params: {}
+examples:
+  flag: ["Done ✅"]
+  pass: ["I fixed the test."]

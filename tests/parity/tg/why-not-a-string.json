@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "pochtit",
+      "pattern": "\\bпочтил\\b",
+      "flags": "iu",
+      "replacement": "починил",
+      "why": 3
+    }
+  ]
+}

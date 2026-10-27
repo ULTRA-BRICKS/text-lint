@@ -1,0 +1,13 @@
+# Markdown docs, READMEs, ADRs, skills.
+name: prose
+fail_on: warning
+markup: markdown
+packs: [dict, script]
+engines:
+  native: {enabled: true}
+  vale: {enabled: true, options: {ext: .md}}
+  aiw-ru: {enabled: true, options: {context: docs}}
+  laya:
+    enabled: true
+    optional: false  # required: no flag or env var turns Laya off
+    options: {questions: [slop], max_chars: 2000, timeout_ms: 1500, start_wait_ms: 60000}

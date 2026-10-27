@@ -1,21 +1,20 @@
 """Real engines: vendored ai-tells + TextLint through a real `vale`, and a real `aiw-ru`.
 
-Skipped when an engine is not installed; CI sets SLOP_CHECK_REQUIRE_ENGINES=1 and installs
+Skipped when an engine is not installed; CI sets TEXT_LINT_REQUIRE_ENGINES=1 and installs
 both, so there a missing engine fails the run instead of skipping it.
 """
 
 import io
 import json
 import os
-import shutil
-import sys
 from importlib.resources import files
 from pathlib import Path
 
 import pytest
 
 from text_lint.cli import main
-from text_lint.engines import find_aiwru, find_vale
+from text_lint.engines.aiwru import find_aiwru
+from text_lint.engines.vale import find_vale
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -24,8 +23,9 @@ TEXTLINT_STYLE = ROOT / "text_lint" / "packs" / "vale" / "styles" / "TextLint"
 SAMPLES = files("text_lint") / "packs" / "vale" / "samples.tsv"
 
 _missing = [name for name, path in (("vale", find_vale()), ("aiw-ru", find_aiwru())) if path is None]
-if _missing and os.environ.get("SLOP_CHECK_REQUIRE_ENGINES") == "1":
-    raise RuntimeError(f"SLOP_CHECK_REQUIRE_ENGINES=1 but not installed: {', '.join(_missing)}")
+_required = os.environ.get("TEXT_LINT_REQUIRE_ENGINES", os.environ.get("SLOP_CHECK_REQUIRE_ENGINES"))
+if _missing and _required == "1":
+    raise RuntimeError(f"TEXT_LINT_REQUIRE_ENGINES=1 but not installed: {', '.join(_missing)}")
 pytestmark = pytest.mark.skipif(
     bool(_missing),
     reason=f"real engine(s) not installed: {', '.join(_missing)} (brew install vale; uv tool install aiw-ru)",
@@ -34,7 +34,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def isolated_state(monkeypatch, tmp_path):
-    # Engine discovery above ran with the caller's SLOP_CHECK_VALE / SLOP_CHECK_AIWRU, so the
+    # Engine discovery above ran with the caller's TEXT_LINT_VALE / TEXT_LINT_AIWRU, so the
     # tests keep them too: both phases must find the same binaries.
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
 
@@ -118,7 +118,8 @@ def test_findings_never_touch_code_or_urls(capsys, monkeypatch):
 ])
 def test_aiwru_described_issues_are_findings(capsys, monkeypatch, text, rule):
     code, data = check(capsys, text=text, monkeypatch=monkeypatch)
-    assert code == 1
+    # A finding of any severity: P2 (suggestion) issues give `warn`, exit 0, under prose.
+    assert data["findings"] and data["verdict"] in ("warn", "block") and code in (0, 1)
     if rule:
         assert rule in rules(data)
 
@@ -201,9 +202,69 @@ def test_textlint_rule_flags_its_sample(capsys, monkeypatch, rule, text):
     assert f"TextLint.{rule}" in rules(data)
 
 
-def test_pr_context_adds_commit_rules(capsys, monkeypatch):
+def test_pr_profile_adds_commit_rules(capsys, monkeypatch):
     text = "This PR adds a retry loop to the uploader.\n"
     _, plain = check(capsys, text=text, monkeypatch=monkeypatch)
-    _, pr = check(capsys, "--context", "pr", text=text, monkeypatch=monkeypatch)
+    _, pr = check(capsys, "--profile", "pr", text=text, monkeypatch=monkeypatch)
     assert "ai-tells-commits.CommitSelfReference" not in rules(plain)
     assert "ai-tells-commits.CommitSelfReference" in rules(pr)
+
+
+def test_commit_and_ui_profiles_pick_their_style_sets(capsys, monkeypatch):
+    text = "This commit adds a robust retry loop. Great question.\n"
+    _, commit = check(capsys, "--profile", "commit", text=text, monkeypatch=monkeypatch)
+    _, ui = check(capsys, "--profile", "ui-strings", text=text, monkeypatch=monkeypatch)
+    # commit: ai-tells-commits and TextLint, no prose-wide ai-tells.
+    assert {"ai-tells-commits.CommitSelfReference", "TextLint.Sycophancy"} <= rules(commit)
+    assert not [r for r in rules(commit) if r.startswith("ai-tells.")]
+    # ui-strings: TextLint only.
+    assert {r.split(".")[0] for r in rules(ui)} == {"TextLint"}
+
+
+def test_tg_bot_allows_done_emoji(capsys, monkeypatch):
+    text = "✅ Done!\n"
+    _, prose = check(capsys, text=text, monkeypatch=monkeypatch)
+    _, tg = check(capsys, "--profile", "tg-bot", text=text, monkeypatch=monkeypatch)
+    assert "TextLint.DoneEmoji" in rules(prose)
+    assert "TextLint.DoneEmoji" not in rules(tg)
+
+
+def test_a_field_cannot_hide_the_next_one_from_vale(capsys, monkeypatch):
+    # An unclosed fence would run to the end of one joined Markdown document, and
+    # `<!-- vale off -->` would switch Vale off for every later field, an ungated one included.
+    document = {"schema": "text-lint/input@1", "fields": [
+        {"name": "caption", "text": "Log:\n```\ntrace", "format": "markdown"},
+        {"name": "harness_title", "text": "<!-- vale off -->\nok", "format": "markdown", "gate": False},
+        {"name": "body", "text": "Great question!", "format": "markdown"},
+    ]}
+    code, data = check(capsys, "--input-json", text=json.dumps(document), monkeypatch=monkeypatch)
+    hits = [(f["field"], f["line"], f["col"]) for f in data["findings"] if f["rule_id"] == "TextLint.Sycophancy"]
+    assert hits == [("body", 1, 1)]
+    assert code == 1
+
+
+def test_plain_and_html_text_cannot_hide_itself_from_vale(capsys, monkeypatch):
+    # A reader sees these literally in a plain or HTML message, so Vale must read them too.
+    document = {"schema": "text-lint/input@1", "fields": [
+        {"name": "title", "text": "<!-- vale off -->\nGreat question!", "format": "plain"},
+        {"name": "subagent", "text": "`Great catch`", "format": "plain"},
+        {"name": "body", "text": "&lt;!-- vale off --&gt;<br>Great question!", "format": "html"},
+    ]}
+    _, data = check(capsys, "--input-json", text=json.dumps(document), monkeypatch=monkeypatch)
+    hits = sorted((f["field"], f["line"]) for f in data["findings"] if f["rule_id"] == "TextLint.Sycophancy")
+    assert hits == [("body", 1), ("subagent", 1), ("title", 2)]
+    _, data = check(capsys, "--profile", "as-user", text="<!-- vale off -->\nGreat question!\n",
+                    monkeypatch=monkeypatch)
+    assert "TextLint.Sycophancy" in rules(data)
+
+
+def test_input_json_leading_bom_keeps_aiwru_spans(capsys, monkeypatch):
+    # aiw-ru reads stdin as utf-8-sig and drops a leading BOM, so the first field must lose it
+    # too; spans still point into the field as sent.
+    field = "\ufeffВ современном мире всё иначе."
+    document = {"schema": "text-lint/input@1", "fields": [{"name": "body", "text": field, "format": "plain"}]}
+    _, data = check(capsys, "--input-json", text=json.dumps(document), monkeypatch=monkeypatch)
+    (hit,) = [f for f in data["findings"] if f["rule_id"] == "aiwru.tier1.в-современном-мире"]
+    start, end = hit["span"]
+    assert field[start:end] == hit["match"] == "В современном мире"
+    assert (hit["line"], hit["col"]) == (1, 2)

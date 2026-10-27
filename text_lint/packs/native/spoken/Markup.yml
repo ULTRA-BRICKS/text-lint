@@ -1,0 +1,9 @@
+id: Spoken.Markup
+kind: spoken-markup
+severity: warning
+profiles: [spoken]
+message: "Remove markup, links and emoji before speaking."
+params: {}
+examples:
+  flag: ["**Done**"]
+  pass: ["I fixed the test."]
