@@ -128,8 +128,8 @@ def no_params(params):
 
 
 def matches(rule, unit, pattern):
-    return [finding(rule, unit, m.start(), m.end(), space="raw", match=m.group())
-            for m in pattern.finditer(unit.raw)]
+    return [finding(rule, unit, m.start(), m.end(), space="semantic", match=m.group())
+            for m in pattern.finditer(unit.semantic)]
 
 
 def emoji(rule, unit, ctx):
@@ -146,4 +146,4 @@ def first_person(rule, unit, ctx):
     probability = ctx.laya.get("first_person")
     if unit is not target or probability is None or probability >= .5:
         return []
-    return [finding(rule, unit, 0, 0, space="raw", match="")]
+    return [finding(rule, unit, 0, 0, space="semantic", match="")]

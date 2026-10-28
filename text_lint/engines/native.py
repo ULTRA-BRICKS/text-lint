@@ -49,7 +49,7 @@ def context(units, meta, *, from_input_json=False, laya=None):
     units = list(units)
     laya = dict(laya or {})
     message = message_unit(units, from_input_json=from_input_json)
-    return RunContext(units=units, meta=meta, gating_text=_SEPARATOR.join(u.raw for u in units if u.gate),
+    return RunContext(units=units, meta=meta, gating_text=_SEPARATOR.join(u.semantic for u in units if u.gate),
                       laya=laya, from_input_json=from_input_json, message=message,
                       intent=intent.of_message(message, meta, laya.get("asks_reader")))
 

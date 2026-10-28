@@ -35,7 +35,8 @@ _SEPARATOR = "\n\n"
 
 
 def check_units(units, meta, profile, *, enforce, lang="auto", ignore=(), fail_on=None,
-                laya_mode="required", suppress=None, dict_path=None, from_input_json=False):
+                laya_mode="required", suppress=None, dict_path=None, from_input_json=False,
+                environment=None):
     """The report@1 dict for ``units``.
 
     ``lang`` routes the text as `--lang` does: `en` skips aiw-ru, `ru` drops ai-tells.
@@ -44,18 +45,20 @@ def check_units(units, meta, profile, *, enforce, lang="auto", ignore=(), fail_o
     ``suppress(findings) -> (kept, suppressed records, extra findings)`` runs before the
     verdict. ``meta`` carries the message meta data (tag, sender, attachments) for the native
     message rules. ``dict_path`` is `--dict`; ``from_input_json`` says the units are input@1
-    fields rather than one file or stdin.
+    fields rather than one file or stdin. ``environment`` replaces process settings for
+    this check when supplied; callers pass an entry-time snapshot.
     """
+    env_options = {} if environment is None else {"env": environment}
     if fail_on is not None:
         profile = replace(profile, fail_on=fail_on)
     native_spec = profile.engines["native"]
     # Loaded first: a broken pack or dictionary ends the run before any engine starts.
-    native_rules, native_status = (native.rules_for(profile, dict_path=dict_path) if native_spec.enabled
+    native_rules, native_status = (native.rules_for(profile, dict_path=dict_path, **env_options) if native_spec.enabled
                                    else ([], _off(profile)))
     # The run reports its intent verdict when the profile runs the intent classifier.
     reports_intent = any(rule.kind == "intent" for rule in native_rules)
     doc = _Document(units)
-    if native_rules and not any(u.raw.strip() for u in doc.units):
+    if native_rules and not any(u.semantic.strip() for u in doc.units):
         # Nothing to read: no rule runs, except the format rules of a tagged message, for which an
         # empty body is malformed (tg-cli refuses an empty `--tag decision` send).
         native_rules = [rule for rule in native_rules if rule.kind == "format" and meta.tag is not None]
@@ -72,7 +75,7 @@ def check_units(units, meta, profile, *, enforce, lang="auto", ignore=(), fail_o
     # code or a URL is dropped below.
     protected = doc.protected
     masked = mask(text, protected)
-    index = LineIndex(text)
+    index = LineIndex(text, universal=False)
     # Blocks come from the real text: a line that is only a URL or inline code must not
     # split its paragraph. Blocks with nothing left after masking (pure code) are skipped.
     paras = [p for p in paragraphs(text) if masked[p[0]:p[1]].strip()]
@@ -86,7 +89,7 @@ def check_units(units, meta, profile, *, enforce, lang="auto", ignore=(), fail_o
 
     # Laya first: native kinds read its answers.
     message = message_unit(doc.units, from_input_json=from_input_json)
-    laya_status, laya_findings = _laya(doc, profile, laya_mode, ignore, meta, message)
+    laya_status, laya_findings = _laya(doc, profile, laya_mode, ignore, meta, message, **env_options)
     # Native findings are located in their unit already: they read the normalized text, which
     # has its code masked, so nothing of theirs is dropped for touching code below. For the
     # score, each is also placed in the joined document (its language is its paragraph's).
@@ -111,7 +114,7 @@ def check_units(units, meta, profile, *, enforce, lang="auto", ignore=(), fail_o
             # Plain and HTML (already stripped) text is read by Vale as plain text: markup the
             # reader sees literally must not switch rules off.
             texts = [(u.text, ext if u.format == "markdown" else f"{ext}.txt") for u in doc.units]
-            vale_findings = doc.place(vale.run(texts), index)
+            vale_findings = doc.place(vale.run(texts, **env_options), index)
             engines["vale"] = {"status": "ok"}
         except EngineMissing as exc:
             if not spec.optional:
@@ -133,7 +136,7 @@ def check_units(units, meta, profile, *, enforce, lang="auto", ignore=(), fail_o
         others = [p for p in paras if p not in aiw_paras]
         try:
             aiw_findings, aiwru_score, label = aiwru.run(mask(text, others + protected),
-                                                         spec.options["context"], index)
+                                                         spec.options["context"], index, **env_options)
             engines["aiw-ru"] = {"status": "ok", "score": aiwru_score, "label": label}
             findings += [_cap(f, spec.cap) for f in aiw_findings]
         except EngineMissing as exc:
@@ -236,28 +239,30 @@ def _cap(finding, cap):
 CI_NOT_RUN = {"status": "not run", "reason": "ci runner, no local model"}
 
 
-def _laya(doc, profile, laya_mode, ignore, meta, message):
+def _laya(doc, profile, laya_mode, ignore, meta, message, *, env=None):
     """(engines["laya"], findings): one request carrying every question the run asks.
 
     Laya is required: when it cannot answer the run ends (LayaUnavailable, exit 2), except on
     a CI runner (`--laya-mode ci`: not run) and for an automated message, which a program
     cannot fix by waiting (the owner's delegated ruling B: reported as unreachable, and the
     other engines decide the verdict)."""
+    env_options = {} if env is None else {"env": env}
+    environment = os.environ if env is None else env
     spec = profile.engines["laya"]
     if not spec.enabled:
         return {"status": "skipped", "reason": f"profile {profile.name} asks Laya nothing"}, []
     on_ci = laya_mode == "ci"
-    if on_ci and os.environ.get("CI") != "true":
+    if on_ci and environment.get("CI") != "true":
         raise ConfigError("--laya-mode ci is for CI runners and needs CI=true in the environment")
     text = doc.laya_text(spec.options["max_chars"])
     if not text.strip():
         return {"status": "skipped", "reason": "empty input"}, []
     # asks_reader serves the intent classifier only, and only where its answer can count.
     questions = [q for q in spec.options["questions"]
-                 if q != "asks_reader" or (message is not None and intent.worth_asking(message.raw, meta))]
+                 if q != "asks_reader" or (message is not None and intent.worth_asking(message.semantic, meta))]
     try:
-        result = laya.ask(text, questions, timeout_s=laya.request_timeout_s(spec.options["timeout_ms"]),
-                          start_wait_s=spec.options["start_wait_ms"] / 1000, start=not on_ci)
+        result = laya.ask(text, questions, timeout_s=laya.request_timeout_s(spec.options["timeout_ms"], **env_options),
+                          start_wait_s=spec.options["start_wait_ms"] / 1000, start=not on_ci, **env_options)
         missing = [q for q in questions if result["answers"].get(q) is None]
         if missing:
             raise laya.LayaUnavailable(f"missing required Laya answer(s): {', '.join(missing)}")

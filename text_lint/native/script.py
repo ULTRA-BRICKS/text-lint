@@ -44,7 +44,7 @@ def _is_latin_cyrillic(ch):
 
 
 def stray_cjk(rule, unit, ctx):
-    text = unit.raw
+    text = unit.semantic
     cjk = sum(1 for ch in text if is_cjk(ch))
     latin_cyrillic = sum(1 for ch in text if _is_latin_cyrillic(ch))
     if cjk >= rule.params["dominant_min"] and cjk / (cjk + latin_cyrillic) >= rule.params["dominant_share"]:
@@ -59,7 +59,7 @@ def stray_cjk(rule, unit, ctx):
         while i < len(text) and is_cjk(text[i]):
             i += 1
         if i - start == 1 and i < len(text) and _is_latin_cyrillic(text[i]):
-            found.append(finding(rule, unit, start, i, space="raw", match=text[start]))
+            found.append(finding(rule, unit, start, i, space="semantic", match=text[start]))
     return found
 
 
@@ -99,7 +99,7 @@ def _is_garbage(run):
 
 
 def mixed_script(rule, unit, ctx):
-    text = unit.raw
+    text = unit.semantic
     found = []
     i = 0
     while i < len(text):
@@ -110,5 +110,5 @@ def mixed_script(rule, unit, ctx):
         while i < len(text) and _letterish(text[i]):
             i += 1
         if _is_garbage(text[start:i]):
-            found.append(finding(rule, unit, start, i, space="raw", match=text[start:i]))
+            found.append(finding(rule, unit, start, i, space="semantic", match=text[start:i]))
     return found

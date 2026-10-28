@@ -27,8 +27,8 @@ This workstation is shared by many agent sessions. Locally run one test file at 
 (skill `runpod-offload`):
 
 ```bash
-runpod-run -- uv run --no-project --with 'pytest>=8,<9' --with 'aiw-ru>=2.5,<3' --with 'PyYAML>=6,<7' --with 'jsonschema>=4,<5' pytest tests -q
-nice -n19 ionice -c3 uv run --no-project --with 'pytest>=8,<9' --with 'PyYAML>=6,<7' --with 'jsonschema>=4,<5' pytest tests/test_<one>.py -q
+runpod-run -- uv run --no-project --with 'pytest>=8,<9' --with 'aiw-ru>=2.5,<3' --with 'PyYAML>=6,<7' --with 'jsonschema>=4,<5' --with 'mypy>=1,<3' --with 'build>=1,<2' --with 'setuptools>=77' pytest tests -q
+nice -n19 ionice -c3 uv run --no-project --with 'pytest>=8,<9' --with 'PyYAML>=6,<7' --with 'jsonschema>=4,<5' --with 'mypy>=1,<3' --with 'build>=1,<2' --with 'setuptools>=77' pytest tests/test_<one>.py -q
 ```
 
 Never start the Laya classify server, load its model or run the real `task classify-server`

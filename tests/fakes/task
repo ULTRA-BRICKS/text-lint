@@ -7,8 +7,8 @@ other command exits 2, so a test can never reach the real task-cli through this 
 """
 import json
 import os
-import sys
 import socket
+import sys
 import time
 
 args = sys.argv[1:]
@@ -30,6 +30,10 @@ if os.environ.get("FAKE_TASK_CREATE_SOCKET"):
     pid = os.fork()
     if pid == 0:
         os.close(ready_r)
+        # The caller collects the parent's pipes before it can send a request.
+        with open(os.devnull, "r+b", buffering=0) as streams:
+            for fd in (0, 1, 2):
+                os.dup2(streams.fileno(), fd)
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                 listener.bind(os.environ["FAKE_TASK_SOCKET"])
@@ -38,6 +42,7 @@ if os.environ.get("FAKE_TASK_CREATE_SOCKET"):
                 os.write(ready_w, b"1")
                 os.close(ready_w)
                 conn, _ = listener.accept()
+                conn.settimeout(5)
                 with conn, conn.makefile("rb") as reader:
                     request = json.loads(reader.readline())
                     with open(os.environ["FAKE_TASK_REQUEST_LOG"], "w", encoding="utf-8") as log:

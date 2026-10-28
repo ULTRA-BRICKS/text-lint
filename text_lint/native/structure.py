@@ -125,7 +125,7 @@ def run(rule, unit, ctx):
     meta = ctx.meta
     if unit is not ctx.message or meta.attachments > 0 or meta.table or meta.send_format not in (None, "plain"):
         return []
-    text = unit.raw
+    text = unit.semantic
     if js_len(re.sub(r"\s+", " ", text).strip()) < rule.params["min_chars"] or has_visible_structure(text):
         return []
-    return [finding(rule, unit, 0, 0, space="raw", match="")]
+    return [finding(rule, unit, 0, 0, space="semantic", match="")]

@@ -127,7 +127,7 @@ def test_invalid_dictionary_names_file_and_rule(tmp_path, data, problems):
 def test_lenient_cases_load(tmp_path):
     bom = write(tmp_path / "bom.json", "\ufeff" + json.dumps({"version": 1, "rules": [POCHTIT]}))
     assert [r.id for r in dictionary.load(bom, True)] == ["Dict.pochtit"]
-    no_version = dict_file(tmp_path, [], name="nv.json")
+    no_version = write(tmp_path / "nv.json", json.dumps({"rules": []}))
     assert dictionary.load(no_version, True) == []
     no_why = {k: v for k, v in POCHTIT.items() if k != "why"}
     (r,) = dictionary.load(dict_file(tmp_path, [dict(no_why, replacement="")], name="nowhy.json"), True)

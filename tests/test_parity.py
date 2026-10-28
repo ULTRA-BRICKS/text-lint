@@ -87,7 +87,7 @@ def _intent_mismatch(case, report):
     if "intent_action" in case:
         expected["action"] = case["intent_action"]
     got = report.get("intent", {})
-    wrong = {key: got.get(key) for key, value in expected.items() if got.get(key) != value}
+    wrong = {key: got.get(key) for key, value in expected.items() if key not in got or got[key] != value}
     return f"intent {wrong} != expected {({key: expected[key] for key in wrong})}" if wrong else None
 
 

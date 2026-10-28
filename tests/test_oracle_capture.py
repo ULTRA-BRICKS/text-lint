@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_SOURCE_SHA256 = '9f5e50d3abaee7d6ce09480f325c706f485ae3240912527e651954d2d6b035bf'
 
 
 def harness(name):
@@ -101,3 +102,39 @@ def test_capture_never_overwrites_expectations(tmp_path):
     with pytest.raises(FileExistsError):
         mod.write_capture(Namespace(output=output), 'replacement')
     assert output.read_text() == 'immutable'
+
+
+def test_all_script_tables_match_unicode_source():
+    """Compare every stored range to the pinned UCD file, including all gaps."""
+    import hashlib
+
+    from text_lint import unicode_scripts as tables
+    source = os.environ.get('TEXT_LINT_UNICODE_SCRIPTS')
+    if not source:
+        pytest.skip('provenance check requires pinned Unicode 17 Scripts.txt')
+    data = Path(source).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == SCRIPT_SOURCE_SHA256
+    names = ('Latin', 'Cyrillic', 'Han', 'Hiragana', 'Katakana', 'Hangul')
+    expected = {name: [] for name in names}
+    for line in data.decode().splitlines():
+        content = line.split('#', 1)[0].strip()
+        if not content:
+            continue
+        span, name = (value.strip() for value in content.split(';'))
+        if name in expected:
+            ends = span.split('..')
+            expected[name].append((int(ends[0], 16), int(ends[-1], 16)))
+    for name, intervals in expected.items():
+        # UCD splits adjacent ranges by general category; runtime merges them.
+        merged = []
+        for start, end in sorted(intervals):
+            if merged and merged[-1][1] + 1 == start:
+                merged[-1] = merged[-1][0], end
+            else:
+                merged.append((start, end))
+        table = getattr(tables, name.upper())
+        assert list(zip(*table)) == merged, name
+        for start, end in merged:
+            for cp in (start - 1, start, end, end + 1):
+                if 0 <= cp <= 0x10FFFF:
+                    assert tables.in_script(chr(cp), table) == any(a <= cp <= b for a, b in merged)

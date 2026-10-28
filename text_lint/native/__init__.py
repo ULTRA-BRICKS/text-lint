@@ -37,9 +37,9 @@ class NativeRule:
 
 @dataclass
 class RunContext:
-    """What a kind may read beyond its own unit. ``gating_text`` is the raw text of every
+    """What a kind may read beyond its own unit. ``gating_text`` is the semantic text of every
     gating unit, joined: a script condition (``only_if_script``) is judged on it, while a
-    `"gate": false` unit is judged on its own raw text. ``laya`` holds the Laya answers of
+    `"gate": false` unit is judged on its own semantic text. ``laya`` holds the Laya answers of
     the run (question -> probability); ``from_input_json`` is false for a file or stdin.
     ``message`` is the unit the message kinds (`format`, `intent`, `long-unstructured`) read
     (message_unit), and ``intent`` the run's intent verdict (intent.of_message)."""
@@ -72,10 +72,12 @@ def message_unit(units: list[Unit], *, from_input_json: bool) -> Unit | None:
 
 def finding(rule, unit, start, end, *, space, match):
     """A Finding of ``rule`` for ``unit`` at [start, end), offsets into ``unit.text``
-    (``space="text"``) or ``unit.raw`` (``space="raw"``); line, col and span point into the
+    (``space="text"``), ``unit.semantic`` (``space="semantic"``), or the original
+    ``unit.raw`` (``space="raw"``); line, col and span point into the
     field as sent."""
     line, col = unit.position(start, space=space)
-    span = unit.raw_span(start, end) if space == "text" else (start, end)
+    span = (unit.raw_span(start, end) if space == "text" else
+            unit.semantic_span(start, end) if space == "semantic" else (start, end))
     return Finding(rule_id=rule.id, engine="native", severity=rule.severity, line=line, col=col, span=span,
                    match=match, message=rule.message.replace("{match}", match), suggestion=rule.replacement,
                    field=unit.field, path=unit.path, key=unit.key, gate=unit.gate)
@@ -89,7 +91,7 @@ def load_pack(directory: Path) -> list[NativeRule]:
     validator = jsonschema.Draft202012Validator(json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
     known_profiles = set(names())
     rules = []
-    seen = {}
+    seen: dict[str, Path] = {}
     for path in sorted(Path(directory).glob("*.yml")):
         try:
             data = yaml.safe_load(path.read_text(encoding="utf-8"))

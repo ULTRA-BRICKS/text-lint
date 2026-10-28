@@ -12,6 +12,7 @@ then `~/.claude/DICT.json`. An empty value counts as unset.
 """
 
 import json
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -22,14 +23,25 @@ SUPPORTED_VERSION = 1
 _DEFAULT = Path(".claude") / "DICT.json"
 
 
-def resolve_path(cli: str | None, env: Mapping[str, str]) -> tuple[Path, bool] | None:
+def resolve_path(cli: str | os.PathLike[str] | None, env: Mapping[str, str]) -> tuple[Path, bool] | None:
     """(path, explicit) of the dictionary to load, or None when there is none: no explicit
     path and no file at the default one. An explicit path that does not exist is a
     ConfigError naming where it came from."""
     for source, value in (("--dict", cli), ("TEXT_LINT_DICT", env.get("TEXT_LINT_DICT")),
                           ("TG_DICT_PATH", env.get("TG_DICT_PATH"))):
         if value:
-            path = Path(value).expanduser()
+            # Explicit environments resolve ~ only against their own HOME.
+            value = os.fspath(value)
+            if env is os.environ:
+                value = str(Path(value).expanduser())
+            elif value == "~" or value.startswith("~/"):
+                home = env.get("HOME")
+                if not home:
+                    raise ConfigError(f"dictionary {value} (from {source}) needs HOME")
+                value = str(Path(home) / value[2:]) if value != "~" else home
+            elif value.startswith("~"):
+                raise ConfigError(f"dictionary {value} (from {source}): named-user expansion is unsupported")
+            path = Path(value)
             if not path.exists():
                 raise ConfigError(f"dictionary {path} (from {source}) does not exist")
             return path, True

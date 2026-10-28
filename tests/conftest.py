@@ -5,7 +5,6 @@ import socket
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -55,46 +54,69 @@ class FakeLaya:
         self.raw_reply = raw_reply
         self.chunk_delay = None
         self.hang = threading.Event() if hang else None
+        self.stopped = threading.Event()
+        self.peer_lock = threading.Lock()
+        self.peer = None
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.bind(str(self.path))
         self.sock.listen(8)
-        self.thread = threading.Thread(target=self._serve, daemon=True)
+        self.thread = threading.Thread(target=self._serve)
         self.thread.start()
 
     def _serve(self):
-        while True:
+        while not self.stopped.is_set():
             try:
                 conn, _ = self.sock.accept()
             except OSError:
                 return
-            with conn, conn.makefile("rb") as reader:
-                try:
+            with self.peer_lock:
+                if self.stopped.is_set():
+                    conn.close()
+                    return
+                self.peer = conn
+            try:
+                with conn, conn.makefile("rb") as reader:
                     req = json.loads(reader.readline())
-                except ValueError:
-                    continue
-                self.requests.append(req)
-                if self.hang is not None:
-                    self.hang.wait(10)
-                    continue
-                if self.raw_reply is not None:
-                    try:
+                    self.requests.append(req)
+                    if self.hang is not None:
+                        self.hang.wait(10)
+                        continue
+                    if self.raw_reply is not None:
                         if self.chunk_delay is None:
                             conn.sendall(self.raw_reply)
                         else:
                             for byte in self.raw_reply:
-                                time.sleep(self.chunk_delay)
+                                if self.stopped.wait(self.chunk_delay):
+                                    return
                                 conn.sendall(bytes([byte]))
-                    except OSError:
-                        pass  # the client may enforce its deadline before all bytes arrive
-                    continue
-                answers = {name: {"type": "noul", "noul": self.answers.get(name, self.noul)}
-                           for name in req.get("questions", {})}
-                conn.sendall(json.dumps({"ok": True, "result": {"answers": answers}}).encode() + b"\n")
+                        continue
+                    answers = {name: {"type": "noul", "noul": self.answers.get(name, self.noul)}
+                               for name in req.get("questions", {})}
+                    conn.sendall(json.dumps({"ok": True, "result": {"answers": answers}}).encode() + b"\n")
+            except (ValueError, OSError):
+                pass  # Invalid requests, disconnected clients, or explicit shutdown.
+            finally:
+                with self.peer_lock:
+                    self.peer = None
 
     def close(self):
+        self.stopped.set()
         if self.hang is not None:
             self.hang.set()
+        with self.peer_lock:
+            if self.peer is not None:
+                try:
+                    self.peer.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+        # shutdown wakes accept on Linux; close alone leaves accept blocked.
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         self.sock.close()
+        self.thread.join(timeout=2)
+        assert not self.thread.is_alive(), "fake Laya did not stop"
 
 
 @pytest.fixture(autouse=True)
@@ -118,3 +140,34 @@ def laya_server(monkeypatch, tmp_path):
     yield server
     server.close()
     shutil.rmtree(directory, ignore_errors=True)
+
+
+@pytest.fixture
+def cold_task_child(monkeypatch, tmp_path):
+    """Adopt, terminate and reap the fake cold-start child, even on a failed assertion."""
+    import ctypes
+    import select
+    import signal
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    previous = ctypes.c_int()
+    assert libc.prctl(37, ctypes.byref(previous), 0, 0, 0) == 0  # GET_CHILD_SUBREAPER
+    assert libc.prctl(36, 1, 0, 0, 0) == 0  # SET_CHILD_SUBREAPER
+    pidfile = tmp_path / "cold.pid"
+    monkeypatch.setenv("FAKE_TASK_CHILD_PID", str(pidfile))
+    try:
+        yield pidfile
+    finally:
+        try:
+            if pidfile.exists():
+                pid = int(pidfile.read_text())
+                fd = os.pidfd_open(pid)
+                try:
+                    # SIGKILL bounds cleanup even if the child's protocol is broken.
+                    os.kill(pid, signal.SIGKILL)
+                    assert select.select([fd], [], [], 2)[0], "fake child did not exit"
+                    assert os.waitpid(pid, 0)[0] == pid
+                finally:
+                    os.close(fd)
+        finally:
+            assert libc.prctl(36, previous.value, 0, 0, 0) == 0

@@ -12,6 +12,10 @@ automated message and `--laya-mode ci` on a CI runner). This module never loads 
 
 Protocol: one JSON line ``{"op": "predict", "message": ..., "questions": {...}}`` in, one
 JSON line ``{"ok": true, "result": {"answers": {name: {"type": "noul", "noul": p}}}}`` out.
+Tagless ``{"noul": p}`` answers remain supported for existing clients/fixtures; an
+explicit type must be ``noul``. The answer must be an object with a finite JSON number
+in [0, 1], without conflicting ``choice``/``score`` payloads or duplicate JSON keys.
+Confidence/action metadata is allowed. Missing questions remain None for caller policy.
 """
 
 import json
@@ -60,8 +64,14 @@ class LayaNotListening(LayaUnavailable):
     """No local listener answered; CI may report this as not run."""
 
 
-def socket_dir():
-    base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+def socket_dir(*, env=None):
+    environment = os.environ if env is None else env
+    base = environment.get("XDG_STATE_HOME")
+    if not base:
+        home = os.path.expanduser("~") if env is None else environment.get("HOME")
+        if not home:
+            return None
+        base = os.path.join(home, ".local", "state")
     return Path(base) / "task-cli" / "classify"
 
 
@@ -69,11 +79,11 @@ def _version_key(path):
     return [int(part) for part in re.findall(r"\d+", path.name)]
 
 
-def candidate_sockets():
+def candidate_sockets(*, env=None):
     """The laya-*.sock files in task-cli's socket directory, highest version first; none when
     the directory is not private to this user."""
-    directory = socket_dir()
-    if not _trusted(directory):
+    directory = socket_dir(**({} if env is None else {"env": env}))
+    if directory is None or not _trusted(directory):
         return []
     return sorted((p for p in directory.glob("laya-*.sock") if _is_socket(p)), key=_version_key, reverse=True)
 
@@ -129,10 +139,10 @@ def _private_group(gid):
     return all(user.pw_name == me for user in pwd.getpwall() if user.pw_gid == gid)
 
 
-def request_timeout_s(timeout_ms):
+def request_timeout_s(timeout_ms, *, env=None):
     """The request timeout in seconds: ``TEXT_LINT_LAYA_TIMEOUT_MS`` when set, else the
     profile's ``timeout_ms``."""
-    value = os.environ.get(TIMEOUT_ENV)
+    value = (os.environ if env is None else env).get(TIMEOUT_ENV)
     if value is None:
         return timeout_ms / 1000
     try:
@@ -144,7 +154,7 @@ def request_timeout_s(timeout_ms):
     return ms / 1000
 
 
-def ask(text, questions, *, timeout_s=1.5, start_wait_s=60.0, start=True):
+def ask(text, questions, *, timeout_s=1.5, start_wait_s=60.0, start=True, env=None):
     """Laya's answers to ``questions`` (QUESTIONS keys) about ``text``, in one request:
     {"answers": {question: p, or None when the reply leaves it out}, "socket": path}.
     ``start=False`` (CI runners) never runs the start command. LayaUnavailable otherwise."""
@@ -153,7 +163,8 @@ def ask(text, questions, *, timeout_s=1.5, start_wait_s=60.0, start=True):
     started = time.monotonic()
     deadline = started + timeout_s
     cold_deadline = started + start_wait_s
-    explicit = os.environ.get(SOCKET_ENV)
+    env_options = {} if env is None else {"env": env}
+    explicit = (os.environ if env is None else env).get(SOCKET_ENV)
     if explicit:
         path = Path(explicit)
         # The text goes to this socket: the same private-directory rule as the default one.
@@ -163,13 +174,16 @@ def ask(text, questions, *, timeout_s=1.5, start_wait_s=60.0, start=True):
         if conn is None:
             raise LayaNotListening(f"{SOCKET_ENV}={explicit}: no server answers (a socket named there is never started)")
     else:
-        path, conn = _connect_highest(deadline)
+        path, conn = _connect_highest(deadline, **env_options)
         if conn is None:
             if not start:
-                raise LayaNotListening(f"no laya-*.sock in {socket_dir()} accepts a connection")
+                directory = socket_dir(**env_options)
+                if directory is None:
+                    raise LayaNotListening("no default socket directory: set XDG_STATE_HOME or HOME")
+                raise LayaNotListening(f"no laya-*.sock in {directory} accepts a connection")
             # Discovery and startup share the cold-start allowance. Once ready, the
             # single predict request gets its own warm budget, including its connect.
-            path = _start(_remaining(cold_deadline, "cold start"))
+            path = _start(_remaining(cold_deadline, "cold start"), **env_options)
             _remaining(cold_deadline, "cold start")
             deadline = time.monotonic() + timeout_s
             conn = _connect(path, _remaining(deadline))
@@ -194,9 +208,9 @@ def _remaining(deadline, phase="warm request"):
     return remaining
 
 
-def _connect_highest(deadline):
+def _connect_highest(deadline, *, env=None):
     """Try highest versions first, sharing one discovery/connect deadline."""
-    for path in candidate_sockets():
+    for path in candidate_sockets(**({} if env is None else {"env": env})):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
@@ -218,29 +232,38 @@ def _connect(path, timeout_s):
     return conn
 
 
-def _start(wait_s):
+def _start(wait_s, *, env=None):
     """The socket path `task classify-server start` prints once the server it started (or
     found running) accepts connections. The command gets ``wait_s`` seconds; its output goes
     to files, so a server it leaves running cannot hold this process on a pipe."""
-    task = shutil.which("task")
+    task = shutil.which("task", path=None if env is None else env.get("PATH", ""))
     if task is None:
         raise LayaUnavailable("no socket answers and task-cli's `task` is not on PATH to start the classify server")
     command = f"`task {' '.join(START_COMMAND)}`"
-    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
-        try:
-            proc = subprocess.Popen([task, *START_COMMAND], stdin=subprocess.DEVNULL, stdout=out, stderr=err)
-        except OSError as exc:
-            raise LayaUnavailable(f"could not run {command}: {exc}") from None
-        try:
-            code = proc.wait(timeout=wait_s)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-            raise LayaUnavailable(f"{command} did not finish within {wait_s:g} s") from None
-        out.seek(0)
-        err.seek(0)
-        stdout = out.read().decode("utf-8", "replace")
-        stderr = err.read().decode("utf-8", "replace").strip()
+    temporary = {} if env is None else {"dir": (env.get("TMPDIR") or "/tmp")}
+    try:
+        with tempfile.TemporaryFile(**temporary) as out, tempfile.TemporaryFile(**temporary) as err:
+            try:
+                proc = subprocess.Popen([task, *START_COMMAND], stdin=subprocess.DEVNULL, stdout=out, stderr=err,
+                                        env=None if env is None else dict(env))
+            except OSError as exc:
+                raise LayaUnavailable(f"could not run {command}: {exc}") from None
+            try:
+                code = proc.wait(timeout=wait_s)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                raise LayaUnavailable(f"{command} did not finish within {wait_s:g} s") from None
+            except BaseException:
+                proc.kill()
+                proc.wait()
+                raise
+            out.seek(0)
+            err.seek(0)
+            stdout = out.read().decode("utf-8", "replace")
+            stderr = err.read().decode("utf-8", "replace").strip()
+    except OSError as exc:
+        raise LayaUnavailable(f"could not prepare temporary start logs: {exc}") from None
     if code != 0:
         raise LayaUnavailable(f"{command} exited {code}: {stderr.splitlines()[-1] if stderr else 'no message'}")
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
@@ -250,6 +273,16 @@ def _start(wait_s):
     if not _trusted(path.parent):
         raise LayaUnavailable(f"{command} printed {path}: its directory is not private to this user")
     return path
+
+
+def _unique_object(pairs):
+    """Do not let JSON's last-key-wins decoding hide conflicting wire answers."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON field: {key}")
+        result[key] = value
+    return result
 
 
 def _exchange(conn, path, request, questions, *, deadline):
@@ -267,21 +300,33 @@ def _exchange(conn, path, request, questions, *, deadline):
             buffer.extend(chunk)
             if len(buffer) > _MAX_REPLY_BYTES:
                 raise ValueError("reply exceeds maximum size")
-        reply = json.loads(buffer.partition(b"\n")[0])
+        reply = json.loads(buffer.partition(b"\n")[0], object_pairs_hook=_unique_object)
         if not isinstance(reply, dict):
-            raise ValueError("reply must be a JSON object")  # noqa: TRY004 - schema validation uses ValueError
+            raise TypeError("reply must be a JSON object")
         if reply.get("ok") is not True:
             raise LayaUnavailable(f"{path}: server error {reply.get('error')}")
         result = reply["result"]
         if not isinstance(result, dict):
-            raise ValueError("result must be a JSON object")  # noqa: TRY004 - schema validation uses ValueError
+            raise TypeError("result must be a JSON object")
         answers = result["answers"]
         if not isinstance(answers, dict):
-            raise ValueError("answers must be a JSON object")  # noqa: TRY004 - schema validation uses ValueError
-        found = {q: answers[q] for q in questions if q in answers}
-        values = {q: found[q]["noul"] if q in found else None for q in questions}
-        if any(p is not None and type(p) not in (int, float) for p in values.values()):
-            raise ValueError("probability must be a JSON number")
+            raise TypeError("answers must be a JSON object")
+        values = {}
+        for q in questions:
+            if q not in answers:
+                values[q] = None
+                continue
+            answer = answers[q]
+            if not isinstance(answer, dict):
+                raise TypeError(f"answer for {q} must be a JSON object")
+            if "type" in answer and answer["type"] != "noul":
+                raise ValueError(f"answer type for {q} must be noul")
+            if "choice" in answer or "score" in answer:
+                raise ValueError(f"conflicting answer fields for {q}")
+            p = answer["noul"]
+            if type(p) not in (int, float):
+                raise TypeError(f"probability for {q} must be a JSON number")
+            values[q] = p
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         raise LayaUnavailable(f"{path}: {type(exc).__name__}: {exc}") from None
     for q, p in values.items():

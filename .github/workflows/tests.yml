@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TEST_PATHS: tests
-      TEST_EXTRA_DEPS: "aiw-ru>=2.5,<3 PyYAML>=6,<7 jsonschema>=4,<5"
+      TEST_EXTRA_DEPS: "aiw-ru>=2.5,<3 PyYAML>=6,<7 jsonschema>=4,<5 mypy>=1,<3 build>=1,<2 setuptools>=77"
       PYTEST_SPEC: "pytest>=8,<9"
       VALE_VERSION: "3.24.0"
       VALE_SHA256: "867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"

@@ -30,39 +30,41 @@ class EngineMissing(EngineError):
     """The engine is not installed: a profile that marks it optional reports it as skipped."""
 
 
-def env_override(*names):
+def env_override(*names, env=None):
     """(name, value) of the first of ``names`` set in the environment, else (None, None).
     ``TEXT_LINT_*`` names come first; the ``SLOP_CHECK_*`` ones stay accepted until the
     slop-check shim is removed."""
+    environment = os.environ if env is None else env
     for name in names:
-        value = os.environ.get(name)
+        value = environment.get(name)
         if value is not None:
             return name, value
     return None, None
 
 
-def explicit_path(*names):
+def explicit_path(*names, env=None):
     """(set, path) for an engine path in the environment: used as is, never replaced by a
     PATH lookup, so ``path`` is None when the value is not an executable file."""
-    name, value = env_override(*names)
+    name, value = env_override(*names, env=env)
     if name is None:
         return False, None
     return True, value if os.path.isfile(value) and os.access(value, os.X_OK) else None
 
 
-def missing(engine, env_names, default_problem, install):
-    name, value = env_override(*env_names)
+def missing(engine, env_names, default_problem, install, *, env=None):
+    name, value = env_override(*env_names, env=env)
     if name is not None:
         return EngineMissing(engine, f"{name}={value} is not an executable file", install)
     return EngineMissing(engine, default_problem, install)
 
 
-def run(engine, argv, text):
+def run(engine, argv, text, *, env=None):
     try:
         # errors="replace": a stray undecodable byte must not crash the run (exit 1 would
         # read as "findings"); the JSON parse then reports a broken engine instead.
         return subprocess.run(argv, input=text, capture_output=True, text=True, encoding="utf-8",
-                              errors="replace", timeout=ENGINE_TIMEOUT_S, check=False)
+                              errors="replace", timeout=ENGINE_TIMEOUT_S, check=False,
+                              env=None if env is None else dict(env))
     except subprocess.TimeoutExpired:
         raise EngineError(engine, f"no answer within {ENGINE_TIMEOUT_S}s") from None
     except OSError as exc:

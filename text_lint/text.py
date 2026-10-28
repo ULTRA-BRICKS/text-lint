@@ -154,27 +154,37 @@ def has_cyrillic(segment):
 class LineIndex:
     """Offset <-> (line, col) with 1-based lines and columns counted in characters."""
 
-    def __init__(self, text):
+    def __init__(self, text: str, *, universal: bool = True) -> None:
+        # Raw source and Vale 3.24.0 count CR/CRLF/LF; aiw-ru counts LF only.
         self.text = text
-        self.starts = [0] + [m.end() for m in re.finditer("\n", text)]
+        self.universal = universal
+        self.starts = [0] + [m.end() for m in re.finditer(r"\r\n|\r|\n" if universal else r"\n", text)]
 
-    def offset(self, line, col):
+    def _line_end(self, line: int) -> int:
+        if line == len(self.starts):
+            return len(self.text)
+        end = self.starts[line] - 1
+        if self.universal and self.text[end] == "\n" and end > 0 and self.text[end - 1] == "\r":
+            end -= 1
+        return end
+
+    def offset(self, line: int, col: int) -> int:
         """IndexError for a position outside the text (an engine reporting nonsense)."""
         if not (isinstance(line, int) and isinstance(col, int)) or not 1 <= line <= len(self.starts) or col < 1:
             raise IndexError(f"no line {line!r}, column {col!r} in the text")
         offset = self.starts[line - 1] + col - 1
-        line_end = self.starts[line] - 1 if line < len(self.starts) else len(self.text)
+        line_end = self._line_end(line)
         if offset > line_end:
             raise IndexError(f"line {line}, column {col} is past the end of that line")
         return offset
 
-    def line_col(self, offset):
+    def line_col(self, offset: int) -> tuple[int, int]:
         i = bisect.bisect_right(self.starts, offset) - 1
         return i + 1, offset - self.starts[i] + 1
 
-    def line_text(self, line):
+    def line_text(self, line: int) -> str:
         start = self.starts[line - 1]
-        end = self.starts[line] - 1 if line < len(self.starts) else len(self.text)
+        end = self._line_end(line)
         return self.text[start:end]
 
 

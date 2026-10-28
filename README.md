@@ -71,20 +71,69 @@ names `SLOP_CHECK_VALE` and `SLOP_CHECK_AIWRU` still work while the `slop-check`
 ## Python API
 
 ```python
-from text_lint import InputDocument, TextLintError, check
+from text_lint import InputDocument, TextLintError, check, sender_prose
 
 report = check(document, profile="tg-bot", enforce="block", dict_path="DICT.json")
 ```
 
 `check(text, *, profile="prose", lang="auto", enforce="block",
-laya_mode="required", dict_path=None)` accepts a string or an input@1 dictionary and
-returns a report@1 dictionary. `TextLintError` covers invalid input, configuration and
+laya_mode="required", dict_path=None, environment=None)` accepts a string or an input@1
+dictionary and returns a report@1 dictionary. `TextLintError` covers invalid input, configuration and
 required-engine failures. The function neither prints nor exits. Strings use the profile's
-markup; documents retain their fields, gating flags and sender metadata.
+markup; documents retain their fields, gating flags and sender metadata. API spans use
+zero-based Python character offsets into the supplied string or field, including BOMs and
+CRLF pairs. Lines and columns are one-based; emoji count as one character. CRLF and lone
+CR each count as one newline. Engines and native rules read normalized line endings;
+API strings and the first document field lose all leading decoded BOMs for checking.
+Embedded BOMs and BOMs in later fields remain. Native format rules retain HTML markup.
+Report spans always refer to the original API input, including whole matched entities.
+These are intentional coordinate corrections for both API strings and input@1 fields:
+a zero-width native finding after one leading BOM starts at `[1, 1]`, line 1, column 2,
+instead of `[0, 0]`, column 1. A BOM-only first field becomes empty for checking, so
+untagged native checks are skipped. CRLF and lone CR in input@1 fields now normalize
+for engines and pattern rules as well. HTML entities decode after that normalization;
+a decoded CR stays in engine text, with its original entity span preserved.
+The plain-text CLI (a file or stdin) is unchanged: it removes one leading BOM while
+reading, so `"\ufeff\ufeffx"` keeps one BOM there and its spans index the text as read.
+
+`environment: Mapping[str, str] | None = None` is optional. `None` keeps the process
+environment behavior used by the CLI. A supplied mapping is copied when `check` starts
+and replaces the environment for that check, including Vale, aiw-ru and any fake or local
+Laya start subprocess. It never changes `os.environ`. Pass the complete intended
+`HOME`, `PATH`, dictionary, Laya and temporary-directory settings; an empty mapping
+inherits no process settings. With a supplied mapping, engine discovery uses its explicit
+engine paths or `PATH`, without the interpreter's sibling aiw-ru fallback. Dictionary
+`~/` paths use that mapping's `HOME`; named-user `~name` expansion requires the default
+process environment. Laya discovery uses `XDG_STATE_HOME`, then `HOME`; with neither,
+there is no default socket directory. For an explicit environment, absent or empty
+`TMPDIR` selects `/tmp` on the supported POSIX engine path. A nonempty invalid or
+unwritable directory raises `TextLintError`; it never falls back to the working directory.
+Temporary files remain local to each check. `dict_path` accepts strings and
+`os.PathLike[str]` objects through `os.fspath`. Mandatory Laya checks remain mandatory.
+A supplied mapping must hold strings only. Each name must be non-empty and contain neither
+`=` nor NUL; each value must not contain NUL; names and values must be encodable by the
+operating system, which accepts surrogate-escaped bytes from `os.environ` but not a lone
+surrogate. Equals signs inside values, empty values and non-ASCII values are valid. An
+invalid mapping raises `TextLintError` before any engine, socket or subprocess starts. The
+message names the position of an invalid name or the name of an invalid value, never a value.
+
+Concurrent consumers can replace environment mutation and its lock with
+`check(document, profile="tg-bot", environment=per_request_environment)`.
+
+`sender_prose(body: str) -> str` is exported from `text_lint` and `text_lint.api`.
+It returns the sender's visible prose: quoted/code elements, fenced and inline code,
+and URLs become spaces; block tags become newlines; inline tags disappear; entities
+decode. Whitespace is preserved rather than trimmed or collapsed. It is the same
+function the native intent classifier uses.
 
 Bot sends use `tg-bot`, owner sends use `as-user`, and voice replies use `spoken`.
 The latter two reject emoji and bot formatting; a Laya first-person probability below
 0.5 also blocks. `spoken` adds markup and URL warnings. A missing native pack is an error.
+
+Laya rejects duplicate JSON keys, non-object answers, explicit answer types other than
+`noul`, conflicting `choice` or `score` fields, and probabilities that are not finite JSON
+numbers in [0, 1]. Tagless `{"noul": p}` answers remain accepted. Missing questions retain
+the existing required-answer policy.
 
 Authored sends fail when Laya cannot answer every requested question. Automated sends
 report `engines.laya.status = "unreachable"`; the other checks still decide the verdict.
@@ -263,7 +312,8 @@ Native rules live in [`text_lint/packs/native/<pack>/`](text_lint/packs/native/)
 per rule, checked against [`text_lint/schema/native-rule-v1.json`](text_lint/schema/native-rule-v1.json):
 a code-backed `kind`, its `params`, the `profiles` it runs in, and examples it must flag and
 pass. The `script` pack (every profile) carries two ports of tg-cli's garbled-token guards.
-Both read the field as sent, code included:
+Both read the normalized field with markup and code included; their spans refer to the
+field as sent:
 
 - `Script.StrayCjk`: one CJK character with a Latin or Cyrillic letter right after it, as
   in an ideograph stuck into a word. A longer CJK run, a CJK suffix that ends a token, and a

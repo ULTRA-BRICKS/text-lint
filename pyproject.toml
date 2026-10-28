@@ -27,9 +27,13 @@ include = ["text_lint*"]
 
 # Every runtime asset ships inside the package, so a wheel install works offline: profiles,
 # JSON schemas, rule packs (the vendored Vale styles, vale.ini, samples, native packs) and
-# the UI-string extraction rules.
+# the UI-string extraction rules and the PEP 561 py.typed marker (typed consumers see the
+# annotations of the public API).
 [tool.setuptools.package-data]
-text_lint = ["profiles/*.yaml", "schema/*.json", "packs/**/*", "extract/rules/*.yml"]
+text_lint = ["profiles/*.yaml", "schema/*.json", "packs/**/*", "extract/rules/*.yml", "py.typed"]
 
 [tool.setuptools.dynamic]
 version = { attr = "text_lint.__version__" }
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "mypy>=1,<3", "build>=1,<2", "setuptools>=77", "ruff>=0.9", "types-PyYAML>=6,<7", "types-jsonschema>=4,<5"]

@@ -21,29 +21,33 @@ VALE_INSTALL = "brew install vale  (or a release binary: https://vale.sh/docs/in
 ENV = ("TEXT_LINT_VALE", "SLOP_CHECK_VALE")
 
 
-def find_vale():
-    explicit, path = explicit_path(*ENV)
-    return path if explicit else shutil.which("vale")
+def find_vale(*, env=None):
+    explicit, path = explicit_path(*ENV, env=env)
+    return path if explicit else shutil.which("vale", path=None if env is None else env.get("PATH", ""))
 
 
-def run(texts):
+def run(texts, *, env=None):
     """Vale findings for each ``(text, ext)`` of ``texts``, the text read as a file with
     extension ``ext``; offsets, lines and columns are within that text. EngineMissing when
     Vale is not installed."""
-    path = find_vale()
+    env_options = {} if env is None else {"env": env}
+    path = find_vale(**env_options)
     if path is None:
-        raise missing("vale", ENV, "not found on PATH (the English engine)", VALE_INSTALL)
-    with tempfile.TemporaryDirectory(prefix="text-lint-") as tmp:
-        files = []
-        for i, (text, ext) in enumerate(texts):
-            file = Path(tmp) / f"unit-{i}{ext}"
-            # newline="": the offsets are counted on "\n" line ends. A lone surrogate (valid
-            # JSON, not UTF-8) becomes one "?", so offsets still hold.
-            with open(file, "w", encoding="utf-8", errors="replace", newline="") as fh:
-                fh.write(text)
-            files.append(str(file))
-        proc = run_engine("vale", [path, "--config", str(VALE_CONFIG), "--no-global", "--output=JSON",
-                                   *files], "")
+        raise missing("vale", ENV, "not found on PATH (the English engine)", VALE_INSTALL, **env_options)
+    try:
+        with tempfile.TemporaryDirectory(prefix="text-lint-", dir=None if env is None else (env.get("TMPDIR") or "/tmp")) as tmp:
+            files = []
+            for i, (text, ext) in enumerate(texts):
+                file = Path(tmp) / f"unit-{i}{ext}"
+                # Preserve engine text exactly. Vale 3.24.0 counts CR, CRLF and LF as
+                # line breaks. A lone surrogate becomes one "?", preserving offsets.
+                with open(file, "w", encoding="utf-8", errors="replace", newline="") as fh:
+                    fh.write(text)
+                files.append(str(file))
+            proc = run_engine("vale", [path, "--config", str(VALE_CONFIG), "--no-global", "--output=JSON",
+                                       *files], "", **env_options)
+    except OSError as exc:
+        raise EngineError("vale", f"could not prepare temporary engine files: {exc}") from None
     # Vale exits 1 when an error-level alert is found; 2 and up is a runtime failure.
     if proc.returncode not in (0, 1):
         raise EngineError("vale", f"failed (exit {proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}")
@@ -52,7 +56,7 @@ def run(texts):
         unknown = set(report) - set(files)
         if unknown:
             raise ValueError(f"alerts for files it was not given: {sorted(unknown)}")
-        return [_vale_findings(report.get(file, []), LineIndex(text)) for file, (text, _) in zip(files, texts)]
+        return [_vale_findings(report.get(file, []), LineIndex(text, universal=True)) for file, (text, _) in zip(files, texts)]
     except MALFORMED as exc:
         raise EngineError("vale", unexpected(exc, proc.stdout)) from None
 

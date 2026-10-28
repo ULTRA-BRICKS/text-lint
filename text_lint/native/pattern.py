@@ -96,7 +96,7 @@ def _normalized(unit):
 
 def run(rule, unit, ctx):
     if rule.params.get("only_if_script") == "cyrillic":
-        scope = ctx.gating_text if unit.gate else unit.raw
+        scope = ctx.gating_text if unit.gate else unit.semantic
         if not _CYRILLIC.search(scope):
             return []
     text, protected = _normalized(unit)

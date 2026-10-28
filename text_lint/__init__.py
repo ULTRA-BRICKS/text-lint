@@ -10,4 +10,6 @@ __version__ = "0.4.0"
 
 # Import the internal check module before binding the public function, so later
 # imports of text_lint.check cannot replace this callable with the module.
-from .api import InputDocument, TextLintError, check  # noqa: F401
+from .api import InputDocument, TextLintError, check, sender_prose
+
+__all__ = ["InputDocument", "TextLintError", "check", "sender_prose"]

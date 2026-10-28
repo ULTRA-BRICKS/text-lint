@@ -5,9 +5,10 @@ hand, so a run needs no jsonschema."""
 import json
 import re
 from dataclasses import dataclass, replace
+from functools import cached_property
 from typing import Literal
 
-from .text import html_source_end, strip_html
+from .text import LineIndex, html_source_end, strip_html
 
 SCHEMA_ID = "text-lint/input@1"
 FORMATS = ("plain", "markdown", "html")
@@ -34,12 +35,13 @@ class Meta:
 class Unit:
     """One piece of text checked as a whole.
 
-    ``raw`` is the field as sent (script, spoken and message rules read it); ``text`` is the
-    normalized text the pattern rules and the Vale/aiw-ru engines read: HTML stripped, else
-    ``raw`` itself, less any leading BOM in the first input@1 field. ``norm_to_raw[j]`` is the
-    offset in ``raw`` of ``text[j]`` (None: the same offset); ``raw_map[i]`` is the 1-based
-    source (line, col) of ``raw[i]`` (None: counted in ``raw``, starting ``line_offset`` lines
-    down).
+    ``raw`` is the unchanged source. ``semantic`` retains markup for native rules, with
+    CRLF and lone CR normalized to LF. ``text`` is the same semantic input with HTML
+    stripped for pattern and external engines. API strings and the first input@1 field
+    lose all leading decoded BOMs; embedded BOMs and later fields retain them.
+    ``norm_to_raw`` and ``semantic_to_raw`` map characters to original source offsets;
+    None denotes identity. ``raw_map`` optionally maps source offsets to extracted-file
+    positions. Every report span remains in ``raw``, in Python codepoints.
     """
 
     text: str
@@ -53,6 +55,22 @@ class Unit:
     raw_map: list[tuple[int, int]] | None = None
     norm_to_raw: list[int] | None = None
 
+    semantic_text: str | None = None
+    semantic_to_raw: list[int] | None = None
+
+    @property
+    def semantic(self):
+        """Normalized source with markup retained; identity when no changes are needed."""
+        return self.raw if self.semantic_text is None else self.semantic_text
+
+    def semantic_offset(self, offset):
+        if self.semantic_to_raw is None:
+            return offset
+        return self.semantic_to_raw[offset] if offset < len(self.semantic_to_raw) else len(self.raw)
+
+    def semantic_span(self, start, end):
+        return self._source_span(self.semantic, self.semantic_to_raw, start, end)
+
     def raw_offset(self, offset):
         """The ``raw`` offset of ``text[offset]``; the end of ``text`` maps to the end of ``raw``."""
         if self.norm_to_raw is None:
@@ -62,21 +80,34 @@ class Unit:
     def raw_span(self, start, end):
         """[start, end) in ``raw`` of ``text[start:end]``: an HTML match that ends on a decoded
         entity covers the whole entity, never a removed tag after it."""
-        raw_start = self.raw_offset(start)
-        if self.norm_to_raw is None or end <= start:
-            return raw_start, max(raw_start, self.raw_offset(end))
-        last = self.norm_to_raw[end - 1]
-        if self.format == "html":
-            return raw_start, html_source_end(self.raw, last, self.text[end - 1], self.raw_offset(end))
+        return self._source_span(self.text, self.norm_to_raw, start, end, html=self.format == "html")
+
+    def _source_span(self, text, mapping, start, end, *, html=False):
+        def offset(i):
+            return i if mapping is None else mapping[i] if i < len(mapping) else len(self.raw)
+        raw_start = offset(start)
+        if mapping is None or end <= start:
+            return raw_start, max(raw_start, offset(end))
+        last = mapping[end - 1]
+        if text[end - 1] == "\n" and self.raw[last:last + 2] == "\r\n":
+            return raw_start, last + 2
+        if html:
+            return raw_start, html_source_end(self.raw, last, text[end - 1], offset(end))
         return raw_start, last + 1
+
+    @cached_property
+    def _raw_index(self):
+        return LineIndex(self.raw)
 
     def position(self, offset, *, space):
         """1-based (line, col) in the source of ``offset`` into ``text`` (``space="text"``) or
-        ``raw`` (``space="raw"``). The end of the text is the column after its last character."""
+        ``semantic`` (``space="semantic"``), or ``raw`` (``space="raw"``). The end of the text is the column after its last character."""
         if space == "text":
             offset = self.raw_offset(offset)
+        elif space == "semantic":
+            offset = self.semantic_offset(offset)
         elif space != "raw":
-            raise ValueError(f"space must be 'text' or 'raw', not {space!r}")
+            raise ValueError(f"space must be 'text', 'semantic' or 'raw', not {space!r}")
         offset = max(0, min(offset, len(self.raw)))
         if self.raw_map is not None:
             if offset < len(self.raw_map):
@@ -85,21 +116,45 @@ class Unit:
                 return 1 + self.line_offset, 1
             line, col = self.raw_map[-1]
             return line, col + 1
-        line_start = self.raw.rfind("\n", 0, offset) + 1
-        return self.raw.count("\n", 0, offset) + 1 + self.line_offset, offset - line_start + 1
+        line, col = self._raw_index.line_col(offset)
+        return line + self.line_offset, col
 
 
 def unit_from_text(text, fmt, *, field=None, gate=True):
-    """A unit for ``text`` in format ``fmt``. Markdown reaches the engines as written (blanking
-    a code span could turn a list item into a code block the engines skip); the check drops
-    findings that touch its code and URLs instead."""
+    """Build a canonical unit without changing its source. Native rules retain markup;
+    pattern rules and external engines read HTML stripped. Markdown protection is applied
+    by the check, so masking cannot change a block's interpretation by an engine."""
     if fmt not in FORMATS:
         raise InputError(f"format must be one of {', '.join(FORMATS)}, not {fmt!r}")
-    if fmt == "html":
-        normalized, norm_to_raw = strip_html(text)
-        return Unit(text=normalized, raw=text, format=fmt, field=field, path=None, gate=gate,
-                    norm_to_raw=norm_to_raw)
-    return Unit(text=text, raw=text, format=fmt, field=field, path=None, gate=gate)
+    semantic, offsets = _newlines(text)
+    normalized, mapping = strip_html(semantic) if fmt == "html" else (semantic, None)
+    if offsets is not None:
+        mapping = offsets if mapping is None else [offsets[j] for j in mapping]
+    return Unit(text=normalized, raw=text, format=fmt, field=field, path=None, gate=gate,
+                norm_to_raw=mapping, semantic_text=semantic if offsets is not None else None,
+                semantic_to_raw=offsets)
+
+
+def _newlines(raw):
+    if "\r" not in raw:
+        return raw, None
+    chars, offsets = [], []
+    i = 0
+    while i < len(raw):
+        offsets.append(i)
+        ch = raw[i]
+        chars.append("\n" if ch == "\r" else ch)
+        i += 2 if ch == "\r" and raw[i:i + 2] == "\r\n" else 1
+    return "".join(chars), offsets
+
+
+def unit_from_api_text(raw, fmt):
+    """Use the first input@1 field's normalization and unchanged-source coordinate contract.
+
+    Without CR or leading decoded BOMs, return the canonical unit directly; plain and
+    Markdown keep the caller's string object and no identity offset list is allocated.
+    """
+    return _without_bom(unit_from_text(raw, fmt))
 
 
 _FIELD_KEYS = {"name", "text", "format", "gate"}
@@ -130,14 +185,28 @@ def parse_input_json(raw):
 
 
 def _without_bom(unit):
-    """``unit`` with leading BOMs dropped from the text the engines read, as the file and stdin
-    path drops one: aiw-ru reads its input as utf-8-sig and drops one more itself, so its
-    offsets would skip it. A BOM is invisible; spans still point into the field as sent."""
+    """Drop all leading decoded BOMs from both semantic views, preserving source offsets.
+
+    HTML entities contribute their complete source range; surrounding tags remain intact.
+    aiw-ru's utf-8-sig reader must never consume a second unaccounted leading BOM.
+    """
     count = len(unit.text) - len(unit.text.lstrip("\ufeff"))
     if not count:
         return unit
-    offsets = unit.norm_to_raw if unit.norm_to_raw is not None else list(range(len(unit.raw)))
-    return replace(unit, text=unit.text[count:], norm_to_raw=offsets[count:])
+    ranges = [unit.raw_span(i, i + 1) for i in range(count)]
+    chars, semantic_offsets = [], []
+    r = 0
+    for i, ch in enumerate(unit.semantic):
+        offset = unit.semantic_offset(i)
+        while r < len(ranges) and offset >= ranges[r][1]:
+            r += 1
+        if r < len(ranges) and ranges[r][0] <= offset < ranges[r][1]:
+            continue
+        chars.append(ch)
+        semantic_offsets.append(offset)
+    offsets = unit.norm_to_raw if unit.norm_to_raw is not None else range(len(unit.raw))
+    return replace(unit, text=unit.text[count:], norm_to_raw=list(offsets[count:]),
+                   semantic_text="".join(chars), semantic_to_raw=semantic_offsets)
 
 
 _SURROGATE = re.compile(r"[\ud800-\udfff]")

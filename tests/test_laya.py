@@ -88,27 +88,19 @@ def test_laya_warm_call(state_home, capsys, monkeypatch, tmp_path):
     assert task_calls(tmp_path) == []
 
 
-def test_laya_cold_start(state_home, capsys, monkeypatch, tmp_path, laya_server):
+def test_laya_cold_start(state_home, capsys, monkeypatch, tmp_path, laya_server, cold_task_child):
     path = socket_path(state_home, "0.99.0")
-    request_log, pid_file = tmp_path / "cold-request.json", tmp_path / "cold.pid"
+    request_log = tmp_path / "cold-request.json"
     assert not path.exists()
     monkeypatch.setenv("FAKE_TASK_SOCKET", str(path))
     monkeypatch.setenv("FAKE_TASK_CREATE_SOCKET", "1")
     monkeypatch.setenv("FAKE_TASK_REQUEST_LOG", str(request_log))
-    monkeypatch.setenv("FAKE_TASK_CHILD_PID", str(pid_file))
-    try:
-        code, out, _ = run(ISSUE_JSON, capsys, monkeypatch, "Plain text.\n")
-        assert code == 0
-        assert json.loads(out)["engines"]["laya"]["socket"] == str(path)
-        assert task_calls(tmp_path) == [["classify-server", "start"]]
-        assert json.loads(request_log.read_text())["message"] == "Plain text.\n"
-        assert laya_server.requests == []
-    finally:
-        if pid_file.exists():
-            try:
-                os.kill(int(pid_file.read_text()), 15)
-            except ProcessLookupError:
-                pass
+    code, out, _ = run(ISSUE_JSON, capsys, monkeypatch, "Plain text.\n")
+    assert code == 0
+    assert json.loads(out)["engines"]["laya"]["socket"] == str(path)
+    assert task_calls(tmp_path) == [["classify-server", "start"]]
+    assert json.loads(request_log.read_text())["message"] == "Plain text.\n"
+    assert laya_server.requests == []
 
 
 def test_highest_version_that_accepts_wins(state_home, capsys, monkeypatch, tmp_path):

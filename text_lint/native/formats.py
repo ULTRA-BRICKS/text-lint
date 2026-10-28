@@ -18,6 +18,7 @@ The kind (``params.validator``) runs on the message unit when ``meta.tag`` names
 import re
 from dataclasses import replace
 
+from ..text import _decode_entity
 from . import finding
 from .jsre import LN, WE, B, L, W, js_len
 
@@ -145,21 +146,31 @@ def _cells(row):
 
 def table_option_rows(body):
     """The option rows of every HTML table and Markdown pipe grid in ``body``; header rows
-    (all `<th>`, or the grid line above `| --- |`) are dropped."""
+    (all `<th>`, or the grid line above `| --- |`) are dropped.
+
+    Like the TypeScript reference, every separator-looking line opens a grid, so a
+    dashes-only data row inside a grid also opens a shorter one and the decision count
+    follows. Each source line is split once: overlapping grids share their row lists, so
+    callers must not mutate them.
+    """
     tables = []
     for table in re.finditer(r"<table\b[\s\S]*?</table\s*>", body, re.IGNORECASE):
         rows = [m.group(0) for m in re.finditer(r"<tr\b[\s\S]*?</tr\s*>", table.group(0), re.IGNORECASE)]
         tables.append([_cells(row) for row in rows if re.search(r"<td\b", row, re.IGNORECASE)])
     lines = [line.strip() for line in body.split("\n")]
+    run_end = [len(lines)] * (len(lines) + 1)  # The first line at or after k without a pipe.
+    for k in range(len(lines) - 1, -1, -1):
+        run_end[k] = run_end[k + 1] if "|" in lines[k] else k
+    cells = [None] * len(lines)
+    parsed = 0
     for i in range(1, len(lines)):
         if not ("|" in lines[i] and "-" in lines[i] and re.fullmatch(r"[\s|:-]+", lines[i])):
             continue
-        rows = []
-        j = i + 1
-        while j < len(lines) and "|" in lines[j]:
-            rows.append([c.strip() for c in re.sub(r"^\||\|\Z", "", lines[j]).split("|")])
-            j += 1
-        tables.append(rows)
+        end = run_end[i + 1]
+        for j in range(max(i + 1, parsed), end):
+            cells[j] = [c.strip() for c in re.sub(r"^\||\|\Z", "", lines[j]).split("|")]
+        parsed = max(parsed, end)
+        tables.append(cells[i + 1:end])
     return tables
 
 
@@ -322,20 +333,10 @@ _VERIFY_RE = re.compile(
 _LONG_REPORT_CHARS = 500
 _MARKDOWN_LIST_LINE_RE = re.compile(r"^\s*(?:[-•*]|[0-9]+[.)])\s+\S")
 _ENTITY_RE = re.compile(r"&(#[0-9]+|#x[0-9a-f]+|[a-z]+);", re.IGNORECASE)
-_NAMED_ENTITIES = {"lt": "<", "gt": ">", "amp": "&", "quot": '"', "apos": "'", "nbsp": " "}
-
-
-def _entity(m):
-    name = m.group(1)
-    if name[0] != "#":
-        return _NAMED_ENTITIES.get(name.lower(), m.group(0))
-    code = int(name[2:], 16) if name[1] in "xX" else int(name[1:])  # noqa: FURB166 - prefix is JS escape/entity syntax, not 0x
-    # A code point no string can hold stays as written (JS throws on it).
-    return chr(code) if code <= 0x10FFFF and not 0xD800 <= code <= 0xDFFF else m.group(0)
 
 
 def decode_entities(text):
-    return _ENTITY_RE.sub(_entity, text)
+    return _ENTITY_RE.sub(_decode_entity, text)
 
 
 def validate_problem(body):
@@ -384,7 +385,7 @@ def run(rule, unit, ctx):
     if unit is not ctx.message or meta.tag != validator:
         return []
     if validator == "decision":
-        missing = validate_decision(unit.raw)
+        missing = validate_decision(unit.semantic)
         if meta.send_format != "html" and not meta.table:
             missing.insert(0, MISSING_HTML)
     elif ctx.intent.action == "block" and ctx.intent.reason == f"malformed-{validator}":
@@ -393,5 +394,5 @@ def run(rule, unit, ctx):
         missing = []
     if not missing:
         return []
-    hit = finding(rule, unit, 0, 0, space="raw", match="")
+    hit = finding(rule, unit, 0, 0, space="semantic", match="")
     return [replace(hit, message=hit.message + " Missing:" + "".join(f" • {item}" for item in missing))]

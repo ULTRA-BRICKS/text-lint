@@ -78,7 +78,7 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+(?=\S)")
 _HAS_WORD_RE = re.compile(LN)
 
 
-def sender_prose(body):
+def sender_prose(body: str) -> str:
     """The sender's visible prose: quoted and code text and URLs removed, block tags turned
     into line breaks, inline tags stripped, entities decoded."""
     text = _QUOTED_ELEMENT_RE.sub(" ", body)
@@ -339,7 +339,7 @@ def of_message(unit, meta, laya_p):
     message; a person's own message, or a run without a message unit, passes unclassified."""
     if unit is None or not (meta.agent_authored or meta.automated):
         return NOT_CLASSIFIED
-    return classify(unit.raw, meta, laya_p)
+    return classify(unit.semantic, meta, laya_p)
 
 
 def run(rule, unit, ctx):
@@ -352,5 +352,5 @@ def run(rule, unit, ctx):
         return []
     if ctx.meta.tag in _PRIMARY_TAGS and reason == f"malformed-{ctx.meta.tag}":
         return []
-    hit = finding(rule, unit, 0, 0, space="raw", match="")
+    hit = finding(rule, unit, 0, 0, space="semantic", match="")
     return [replace(hit, message=hit.message + " Fix:" + "".join(f" • {item}" for item in verdict.detail))]

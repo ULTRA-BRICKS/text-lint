@@ -19,10 +19,12 @@ ENV = ("TEXT_LINT_AIWRU", "SLOP_CHECK_AIWRU")
 _SEVERITY = {"P0": "error", "P1": "warning", "P2": "suggestion"}
 
 
-def find_aiwru():
-    explicit, path = explicit_path(*ENV)
+def find_aiwru(*, env=None):
+    explicit, path = explicit_path(*ENV, env=env)
     if explicit:
         return path
+    if env is not None:
+        return shutil.which("aiw-ru", path=env.get("PATH", ""))
     # Installed as our dependency (pipx / uv tool venv): its script sits next to our python.
     # On Windows that script is Scripts/aiw-ru.exe.
     for name in ("aiw-ru", "aiw-ru.exe"):
@@ -32,13 +34,14 @@ def find_aiwru():
     return shutil.which("aiw-ru")
 
 
-def run(text, context, index):
+def run(text, context, index, *, env=None):
     """(findings, score, label) from aiw-ru on ``text``; ``styleOnly`` advice is dropped.
     EngineMissing when aiw-ru is not installed."""
-    path = find_aiwru()
+    env_options = {} if env is None else {"env": env}
+    path = find_aiwru(**env_options)
     if path is None:
-        raise missing("aiw-ru", ENV, "not found (the Russian engine)", AIWRU_INSTALL)
-    proc = run_engine("aiw-ru", [path, "scan", "--json", "--no-model", "--context", context], text)
+        raise missing("aiw-ru", ENV, "not found (the Russian engine)", AIWRU_INSTALL, **env_options)
+    proc = run_engine("aiw-ru", [path, "scan", "--json", "--no-model", "--context", context], text, **env_options)
     if proc.returncode != 0:
         raise EngineError("aiw-ru", f"failed (exit {proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}")
     try:
