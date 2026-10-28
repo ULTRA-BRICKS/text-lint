@@ -17,6 +17,7 @@
   for engines and patterns while retaining caller-original spans.
 - Respect Vale's CR/CRLF/LF coordinates and aiw-ru's LF-only fallback coordinates.
   Exclude the full CRLF terminator from line content and column bounds.
+- Treat a Laya reply nested past the JSON decoder's recursion limit as an unavailable engine, not a crash.
 - Preserve `os.fspath` semantics for dictionary paths in explicit and default environments.
 - Use `/tmp` for absent or empty explicit `TMPDIR`; report invalid temporary directories
   as engine errors. Close partial startup logs and reap cancelled startup processes.

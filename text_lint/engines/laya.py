@@ -327,7 +327,7 @@ def _exchange(conn, path, request, questions, *, deadline):
             if type(p) not in (int, float):
                 raise TypeError(f"probability for {q} must be a JSON number")
             values[q] = p
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError) as exc:
         raise LayaUnavailable(f"{path}: {type(exc).__name__}: {exc}") from None
     for q, p in values.items():
         if p is not None and not 0.0 <= p <= 1.0:  # also rejects NaN
